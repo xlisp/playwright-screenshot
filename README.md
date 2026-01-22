@@ -57,7 +57,36 @@ docker run --rm -v $(pwd)/output:/app/screenshots playwright-screenshot \
     --height 720 \
     --viewport-only
 ```
+**本地多次测试:**
+```
+# 跑一个bash
+base ❯ docker exec -it playwright_container2 bash
+root@9999bade782c:/app#
 
+#=>
+❯ docker exec playwright_container2 python3 /app/screenshot.py https://hub.docker.com/_/ubuntu /app/screenshots/test.png
+🔧 Using Chrome at: /opt/chrome/chrome-linux64/chrome
+📸 Navigating to: https://hub.docker.com/_/ubuntu
+⏳ Waiting 3000ms for content to load...
+✅ Screenshot saved to: /app/screenshots/test.png
+📁 File size: 511.41 KB
+~ 32s
+❯ docker cp playwright_container2:/app/screenshots/test.png ./test.png
+Successfully copied 525kB to /Users/xlisp/test.png
+~
+❯ docker ps
+CONTAINER ID   IMAGE                          COMMAND                  CREATED         STATUS         PORTS     NAMES
+9999bade782c   playwright-screenshot:latest   "bash -c 'tail -f /d…"   2 minutes ago   Up 2 minutes             playwright_container2
+~
+❯
+
+# 进入当前跑的bash:
+❯ docker exec -i -t 9999bade782c /bin/bash
+root@9999bade782c:/app# ls -lh /app/screenshots/test.png
+-rw-r--r-- 1 root root 512K Jan 22 08:28 /app/screenshots/test.png
+root@9999bade782c:/app#
+
+```
 ## 命令行参数
 
 | 参数 | 简写 | 默认值 | 说明 |
