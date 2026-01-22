@@ -10,7 +10,7 @@ playwright-screenshot/
 ├── requirements.txt    # Python 依赖
 ├── screenshot.py       # 主截图脚本
 ├── entrypoint.sh       # 容器入口脚本
-├── chrome-linux64.zip  # 本地 Chrome 浏览器 (需手动复制)
+├── chrome-linux64.zip  # 本地 Chrome 浏览器 (需手动复制: https://storage.googleapis.com/chrome-for-testing-public/143.0.7499.4/linux64/chrome-linux64.zip) 
 └── README.md           # 说明文档
 ```
 
@@ -86,6 +86,17 @@ root@9999bade782c:/app# ls -lh /app/screenshots/test.png
 -rw-r--r-- 1 root root 512K Jan 22 08:28 /app/screenshots/test.png
 root@9999bade782c:/app#
 
+# 运行的手动安装的chrome:
+root@9999bade782c:/app# playwright -V
+Version 1.57.0
+root@9999bade782c:/app# ls /opt/chrome/chrome-linux64/chrome
+/opt/chrome/chrome-linux64/chrome
+root@9999bade782c:/app# ls /opt/chrome/chrome-linux64
+ABOUT                                chrome                  chrome_crashpad_handler  icudtl.dat            libvulkan.so.1       resources.pak            xdg-mime
+MEIPreload                           chrome-wrapper          chrome_sandbox           libEGL.so             locales              rpm.deps                 xdg-settings
+PrivacySandboxAttestationsPreloaded  chrome_100_percent.pak  deb.deps                 libGLESv2.so          product_logo_48.png  v8_context_snapshot.bin
+WidevineCdm                          chrome_200_percent.pak  hyphen-data              libvk_swiftshader.so  resources            vk_swiftshader_icd.json
+root@9999bade782c:/app#
 ```
 ## 命令行参数
 
