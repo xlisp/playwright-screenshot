@@ -1,5 +1,6 @@
 # Playwright Screenshot Docker Image
 # Based on Ubuntu 24.04
+# Uses local Chrome browser (offline installation)
 
 FROM ubuntu:24.04
 
@@ -12,7 +13,8 @@ RUN apt-get update && apt-get install -y \
     python3 \
     python3-pip \
     python3-venv \
-    # Playwright browser dependencies
+    unzip \
+    # Playwright/Chrome browser dependencies
     libasound2t64 \
     libatk-bridge2.0-0t64 \
     libatk1.0-0t64 \
@@ -56,8 +58,16 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip3 install --no-cache-dir -r requirements.txt --break-system-packages
 
-# Install Playwright browsers
-RUN playwright install chromium
+# Copy and install local Chrome browser
+# The chrome-linux64.zip should be placed in the project directory before building
+COPY chrome-linux64.zip /tmp/chrome-linux64.zip
+RUN mkdir -p /opt/chrome \
+    && unzip /tmp/chrome-linux64.zip -d /opt/chrome \
+    && rm /tmp/chrome-linux64.zip \
+    && chmod +x /opt/chrome/chrome-linux64/chrome
+
+# Set Chrome executable path environment variable
+ENV CHROME_PATH=/opt/chrome/chrome-linux64/chrome
 
 # Copy application code
 COPY screenshot.py .

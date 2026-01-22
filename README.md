@@ -1,6 +1,6 @@
-# Playwright Screenshot Tool
+# Playwright Screenshot Tool (Offline Version)
 
-基于 Ubuntu 24.04 的 Playwright 网页截图工具。
+基于 Ubuntu 24.04 的 Playwright 网页截图工具，支持离线安装 Chrome 浏览器。
 
 ## 项目结构
 
@@ -10,19 +10,28 @@ playwright-screenshot/
 ├── requirements.txt    # Python 依赖
 ├── screenshot.py       # 主截图脚本
 ├── entrypoint.sh       # 容器入口脚本
+├── chrome-linux64.zip  # 本地 Chrome 浏览器 (需手动复制)
 └── README.md           # 说明文档
 ```
 
 ## 快速开始
 
-### 1. 构建镜像
+### 1. 准备 Chrome 浏览器文件
+
+由于网络限制，需要手动复制本地 Chrome 浏览器文件到项目目录：
+
+```bash
+cp /Users/xlisp/Downloads/chrome-linux64.zip /Users/xlisp/PyPro/playwright-screenshot/
+```
+
+### 2. 构建镜像
 
 ```bash
 cd /Users/xlisp/PyPro/playwright-screenshot
 docker build -t playwright-screenshot .
 ```
 
-### 2. 运行截图
+### 3. 运行截图
 
 **默认截图 (Docker Hub Ubuntu 页面):**
 
@@ -86,29 +95,23 @@ docker run --rm -v $(pwd)/output:/app/screenshots playwright-screenshot \
 ### 交互式进入容器
 
 ```bash
-docker run -it --rm -v $(pwd)/output:/app/screenshots playwright-screenshot bash
+docker run -it --rm --entrypoint bash -v $(pwd)/output:/app/screenshots playwright-screenshot
 # 然后在容器内运行:
 python3 screenshot.py https://example.com /app/screenshots/test.png
 ```
 
-## 本地开发
+## 离线安装说明
 
-如果想在本地运行而不使用 Docker:
+本项目使用本地 Chrome 浏览器文件，避免了从外网下载的限制。
 
-```bash
-# 安装依赖
-pip install -r requirements.txt
+Chrome 浏览器文件来源：
+- 官方下载: https://googlechromelabs.github.io/chrome-for-testing/
+- 选择 Linux x64 版本的 `chrome-linux64.zip`
 
-# 安装 Playwright 浏览器
-playwright install chromium
-playwright install-deps chromium
-
-# 运行脚本
-python screenshot.py https://example.com output.png
-```
+浏览器安装位置：`/opt/chrome/chrome-linux64/chrome`
 
 ## 注意事项
 
-- 镜像大小约 1.5GB (包含 Chromium 浏览器)
-- 首次构建需要下载较多依赖，请耐心等待
+- 构建前必须将 `chrome-linux64.zip` 复制到项目目录
+- 镜像大小约 1.5GB (包含 Chrome 浏览器)
 - 截图输出目录需要挂载到宿主机才能获取文件
