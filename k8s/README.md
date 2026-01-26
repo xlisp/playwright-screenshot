@@ -285,4 +285,12 @@ scheduled-screenshot   0 * * * *   <none>     False     0        <none>         
 
 ~/PyPro/playwright-screenshot/k8s main 20s
 ❯
+
+## 查看pods
+❯ kubectl -n playwright-screenshot get pods
+
+NAME                                     READY   STATUS    RESTARTS   AGE
+playwright-screenshot-84d75d7f99-5fl7z   1/1     Running   0          4m56s
+playwright-screenshot-84d75d7f99-d2f5m   1/1     Running   0          4m56s
+
 ```
