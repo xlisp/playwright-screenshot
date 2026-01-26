@@ -1,0 +1,8 @@
+# Namespace for Playwright Screenshot service
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: playwright-screenshot
+  labels:
+    app: playwright-screenshot
+    environment: production

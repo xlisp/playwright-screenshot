@@ -1,0 +1,57 @@
+# Job template for running screenshot tasks
+# Usage: Replace URL and OUTPUT_PATH, then apply
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: screenshot-job
+  namespace: playwright-screenshot
+  labels:
+    app: playwright-screenshot
+    type: screenshot-job
+spec:
+  # Auto-cleanup completed jobs after 1 hour
+  ttlSecondsAfterFinished: 3600
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app: playwright-screenshot
+        type: screenshot-job
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: playwright-screenshot
+          image: playwright-screenshot:latest
+          imagePullPolicy: IfNotPresent
+          # Pass URL and output path as arguments
+          args:
+            - "https://example.com"  # Replace with target URL
+            - "/app/screenshots/output.png"  # Replace with output path
+            - "--full-page"
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "2Gi"
+              cpu: "1000m"
+          envFrom:
+            - configMapRef:
+                name: playwright-screenshot-config
+          volumeMounts:
+            - name: screenshots-storage
+              mountPath: /app/screenshots
+            - name: dshm
+              mountPath: /dev/shm
+          securityContext:
+            capabilities:
+              add:
+                - SYS_ADMIN
+      volumes:
+        - name: screenshots-storage
+          persistentVolumeClaim:
+            claimName: playwright-screenshot-pvc
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: "2Gi"

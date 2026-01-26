@@ -1,0 +1,16 @@
+# PersistentVolumeClaim for storing screenshots
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: playwright-screenshot-pvc
+  namespace: playwright-screenshot
+  labels:
+    app: playwright-screenshot
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  # Uncomment and modify if you need a specific storage class
+  # storageClassName: standard

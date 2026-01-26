@@ -1,0 +1,66 @@
+# CronJob for scheduled screenshots
+# Example: Take a screenshot every hour
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: scheduled-screenshot
+  namespace: playwright-screenshot
+  labels:
+    app: playwright-screenshot
+    type: cronjob
+spec:
+  # Run every hour at minute 0
+  schedule: "0 * * * *"
+  # Keep 3 successful job histories
+  successfulJobsHistoryLimit: 3
+  # Keep 1 failed job history
+  failedJobsHistoryLimit: 1
+  # Don't allow concurrent jobs
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: playwright-screenshot
+            type: cronjob
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: playwright-screenshot
+              image: playwright-screenshot:latest
+              imagePullPolicy: IfNotPresent
+              # Screenshot command with timestamp in filename
+              command:
+                - /bin/bash
+                - -c
+                - |
+                  TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+                  /app/entrypoint.sh "https://example.com" "/app/screenshots/scheduled_${TIMESTAMP}.png" --full-page
+              resources:
+                requests:
+                  memory: "512Mi"
+                  cpu: "250m"
+                limits:
+                  memory: "2Gi"
+                  cpu: "1000m"
+              envFrom:
+                - configMapRef:
+                    name: playwright-screenshot-config
+              volumeMounts:
+                - name: screenshots-storage
+                  mountPath: /app/screenshots
+                - name: dshm
+                  mountPath: /dev/shm
+              securityContext:
+                capabilities:
+                  add:
+                    - SYS_ADMIN
+          volumes:
+            - name: screenshots-storage
+              persistentVolumeClaim:
+                claimName: playwright-screenshot-pvc
+            - name: dshm
+              emptyDir:
+                medium: Memory
+                sizeLimit: "2Gi"

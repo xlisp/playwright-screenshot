@@ -1,0 +1,85 @@
+# Deployment for Playwright Screenshot service
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: playwright-screenshot
+  namespace: playwright-screenshot
+  labels:
+    app: playwright-screenshot
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: playwright-screenshot
+  template:
+    metadata:
+      labels:
+        app: playwright-screenshot
+    spec:
+      containers:
+        - name: playwright-screenshot
+          # Update this image reference after building and pushing to your registry
+          image: playwright-screenshot:latest
+          imagePullPolicy: IfNotPresent
+          # Override default entrypoint to keep container running as a service
+          command: ["sleep", "infinity"]
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "2Gi"
+              cpu: "1000m"
+          envFrom:
+            - configMapRef:
+                name: playwright-screenshot-config
+          volumeMounts:
+            - name: screenshots-storage
+              mountPath: /app/screenshots
+            # Shared memory for Chrome browser
+            - name: dshm
+              mountPath: /dev/shm
+          securityContext:
+            # Chrome needs some capabilities
+            capabilities:
+              add:
+                - SYS_ADMIN
+          # Health check - verify Chrome is accessible
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - "test -x /opt/chrome/chrome-linux64/chrome"
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - "test -x /opt/chrome/chrome-linux64/chrome"
+            initialDelaySeconds: 10
+            periodSeconds: 30
+      volumes:
+        - name: screenshots-storage
+          persistentVolumeClaim:
+            claimName: playwright-screenshot-pvc
+        # Chrome requires larger shared memory
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: "2Gi"
+      # Ensure pods are spread across nodes for better availability
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values:
+                        - playwright-screenshot
+                topologyKey: kubernetes.io/hostname

@@ -1,0 +1,18 @@
+# ConfigMap for Playwright Screenshot configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: playwright-screenshot-config
+  namespace: playwright-screenshot
+  labels:
+    app: playwright-screenshot
+data:
+  # Default viewport dimensions
+  VIEWPORT_WIDTH: "1920"
+  VIEWPORT_HEIGHT: "1080"
+  # Default wait time (ms)
+  WAIT_TIME: "3000"
+  # Navigation timeout (ms)
+  TIMEOUT: "60000"
+  # Chrome path inside container
+  CHROME_PATH: "/opt/chrome/chrome-linux64/chrome"
