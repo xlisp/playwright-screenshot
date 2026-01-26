@@ -1,28 +1,32 @@
-# Deployment for Playwright Screenshot service
+# Deployment for Playwright Screenshot API Service
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: playwright-screenshot
+  name: playwright-screenshot-api
   namespace: playwright-screenshot
   labels:
     app: playwright-screenshot
+    component: api
 spec:
   replicas: 2
   selector:
     matchLabels:
       app: playwright-screenshot
+      component: api
   template:
     metadata:
       labels:
         app: playwright-screenshot
+        component: api
     spec:
       containers:
-        - name: playwright-screenshot
-          # Update this image reference after building and pushing to your registry
+        - name: playwright-screenshot-api
           image: playwright-screenshot:latest
           imagePullPolicy: IfNotPresent
-          # Override default entrypoint to keep container running as a service
-          command: ["sleep", "infinity"]
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
           resources:
             requests:
               memory: "512Mi"
@@ -33,44 +37,40 @@ spec:
           envFrom:
             - configMapRef:
                 name: playwright-screenshot-config
+          env:
+            - name: PORT
+              value: "8080"
           volumeMounts:
             - name: screenshots-storage
               mountPath: /app/screenshots
-            # Shared memory for Chrome browser
             - name: dshm
               mountPath: /dev/shm
           securityContext:
-            # Chrome needs some capabilities
             capabilities:
               add:
                 - SYS_ADMIN
-          # Health check - verify Chrome is accessible
           readinessProbe:
-            exec:
-              command:
-                - /bin/sh
-                - -c
-                - "test -x /opt/chrome/chrome-linux64/chrome"
-            initialDelaySeconds: 5
-            periodSeconds: 10
-          livenessProbe:
-            exec:
-              command:
-                - /bin/sh
-                - -c
-                - "test -x /opt/chrome/chrome-linux64/chrome"
+            httpGet:
+              path: /health
+              port: 8080
             initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 15
             periodSeconds: 30
+            timeoutSeconds: 10
       volumes:
         - name: screenshots-storage
           persistentVolumeClaim:
             claimName: playwright-screenshot-pvc
-        # Chrome requires larger shared memory
         - name: dshm
           emptyDir:
             medium: Memory
             sizeLimit: "2Gi"
-      # Ensure pods are spread across nodes for better availability
       affinity:
         podAntiAffinity:
           preferredDuringSchedulingIgnoredDuringExecution:

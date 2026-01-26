@@ -1,0 +1,50 @@
+# Nginx Service - LoadBalancer for external access
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx
+  namespace: playwright-screenshot
+  labels:
+    app: playwright-screenshot
+    component: nginx
+  annotations:
+    # Uncomment for cloud provider specific settings
+    # AWS NLB:
+    # service.beta.kubernetes.io/aws-load-balancer-type: nlb
+    # GCP:
+    # cloud.google.com/neg: '{"ingress": true}'
+spec:
+  type: LoadBalancer
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+      protocol: TCP
+    - name: https
+      port: 443
+      targetPort: 443
+      protocol: TCP
+  selector:
+    app: playwright-screenshot
+    component: nginx
+---
+# Alternative: NodePort Service (for local testing)
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-nodeport
+  namespace: playwright-screenshot
+  labels:
+    app: playwright-screenshot
+    component: nginx
+spec:
+  type: NodePort
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+      nodePort: 30080
+      protocol: TCP
+  selector:
+    app: playwright-screenshot
+    component: nginx

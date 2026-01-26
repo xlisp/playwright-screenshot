@@ -1,0 +1,19 @@
+# Service for Playwright Screenshot API
+apiVersion: v1
+kind: Service
+metadata:
+  name: playwright-screenshot-api
+  namespace: playwright-screenshot
+  labels:
+    app: playwright-screenshot
+    component: api
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+      protocol: TCP
+  selector:
+    app: playwright-screenshot
+    component: api

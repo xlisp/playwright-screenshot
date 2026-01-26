@@ -1,12 +1,13 @@
 # Playwright Screenshot Docker Image
 # Based on Ubuntu 24.04
-# Uses local Chrome browser (offline installation)
+# REST API Service with local Chrome browser
 
 FROM ubuntu:24.04
 
 # Set environment variables
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
+ENV PORT=8080
 
 # Update and install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -59,7 +60,6 @@ COPY requirements.txt .
 RUN pip3 install --no-cache-dir -r requirements.txt --break-system-packages
 
 # Copy and install local Chrome browser
-# The chrome-linux64.zip should be placed in the project directory before building
 COPY chrome-linux64.zip /tmp/chrome-linux64.zip
 RUN mkdir -p /opt/chrome \
     && unzip /tmp/chrome-linux64.zip -d /opt/chrome \
@@ -71,12 +71,20 @@ ENV CHROME_PATH=/opt/chrome/chrome-linux64/chrome
 
 # Copy application code
 COPY screenshot.py .
+COPY api.py .
 COPY entrypoint.sh .
 RUN chmod +x entrypoint.sh
 
 # Create output directory
 RUN mkdir -p /app/screenshots
+ENV SCREENSHOTS_DIR=/app/screenshots
 
-# Set default command
-ENTRYPOINT ["/app/entrypoint.sh"]
-CMD ["https://hub.docker.com/_/ubuntu", "/app/screenshots/screenshot.png"]
+# Expose API port
+EXPOSE 8080
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')" || exit 1
+
+# Default: Run API server with gunicorn
+CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "2", "--threads", "4", "--timeout", "120", "api:app"]

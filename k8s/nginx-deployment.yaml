@@ -1,0 +1,88 @@
+# Nginx Plus Deployment
+# Note: Requires Nginx Plus license and private registry access
+# For OSS Nginx, change image to: nginx:1.25-alpine
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx
+  namespace: playwright-screenshot
+  labels:
+    app: playwright-screenshot
+    component: nginx
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: playwright-screenshot
+      component: nginx
+  template:
+    metadata:
+      labels:
+        app: playwright-screenshot
+        component: nginx
+    spec:
+      containers:
+        - name: nginx
+          # For Nginx Plus, use your private registry image:
+          # image: your-registry/nginx-plus:r30
+          # For OSS Nginx:
+          image: nginx:1.25-alpine
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 80
+              protocol: TCP
+            - name: https
+              containerPort: 443
+              protocol: TCP
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "256Mi"
+              cpu: "500m"
+          volumeMounts:
+            - name: nginx-config
+              mountPath: /etc/nginx/nginx.conf
+              subPath: nginx.conf
+              readOnly: true
+            # Uncomment for TLS
+            # - name: tls-certs
+            #   mountPath: /etc/nginx/ssl
+            #   readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /nginx-health
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /nginx-health
+              port: 80
+            initialDelaySeconds: 10
+            periodSeconds: 10
+      # Uncomment for Nginx Plus private registry
+      # imagePullSecrets:
+      #   - name: nginx-plus-registry-secret
+      volumes:
+        - name: nginx-config
+          configMap:
+            name: nginx-config
+        # Uncomment for TLS
+        # - name: tls-certs
+        #   secret:
+        #     secretName: nginx-tls-secret
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: component
+                      operator: In
+                      values:
+                        - nginx
+                topologyKey: kubernetes.io/hostname

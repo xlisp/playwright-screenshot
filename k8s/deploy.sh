@@ -1,51 +1,32 @@
 #!/bin/bash
 #
 # Playwright Screenshot K8s Deployment Script
-# Usage: ./deploy.sh [REGISTRY] [TAG]
+# Deploys API service with Nginx reverse proxy
 #
-# Examples:
-#   ./deploy.sh                           # Use local image
-#   ./deploy.sh docker.io/myuser latest   # Push to Docker Hub
-#   ./deploy.sh registry.example.com/repo v1.0.0
+# Usage: ./deploy.sh [REGISTRY] [TAG]
 #
 
 set -e
 
-# Configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 NAMESPACE="playwright-screenshot"
 
-# Parse arguments
 REGISTRY="${1:-}"
 TAG="${2:-latest}"
 IMAGE_NAME="playwright-screenshot"
 
-# Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
-# Helper functions
-log_info() {
-    echo -e "${BLUE}[INFO]${NC} $1"
-}
+log_info() { echo -e "${BLUE}[INFO]${NC} $1"; }
+log_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
+log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
+log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
-log_success() {
-    echo -e "${GREEN}[SUCCESS]${NC} $1"
-}
-
-log_warn() {
-    echo -e "${YELLOW}[WARN]${NC} $1"
-}
-
-log_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
-}
-
-# Check prerequisites
 check_prerequisites() {
     log_info "Checking prerequisites..."
     
@@ -59,7 +40,6 @@ check_prerequisites() {
         exit 1
     fi
     
-    # Check if kubectl can connect to cluster
     if ! kubectl cluster-info &> /dev/null; then
         log_error "Cannot connect to Kubernetes cluster"
         exit 1
@@ -68,7 +48,6 @@ check_prerequisites() {
     log_success "Prerequisites check passed"
 }
 
-# Build Docker image
 build_image() {
     log_info "Building Docker image..."
     
@@ -81,31 +60,22 @@ build_image() {
     fi
     
     docker build -t "$FULL_IMAGE" .
-    
     log_success "Image built: $FULL_IMAGE"
     
-    # Push to registry if specified
     if [ -n "$REGISTRY" ]; then
         log_info "Pushing image to registry..."
         docker push "$FULL_IMAGE"
         log_success "Image pushed: $FULL_IMAGE"
-    fi
-    
-    # Update deployment with new image
-    if [ -n "$REGISTRY" ]; then
+        
         log_info "Updating deployment YAML with image: $FULL_IMAGE"
         sed -i.bak "s|image: playwright-screenshot:latest|image: $FULL_IMAGE|g" "$SCRIPT_DIR/deployment.yaml"
-        sed -i.bak "s|image: playwright-screenshot:latest|image: $FULL_IMAGE|g" "$SCRIPT_DIR/job.yaml"
-        sed -i.bak "s|image: playwright-screenshot:latest|image: $FULL_IMAGE|g" "$SCRIPT_DIR/cronjob.yaml"
         rm -f "$SCRIPT_DIR"/*.bak
     fi
 }
 
-# Deploy to Kubernetes
 deploy_k8s() {
     log_info "Deploying to Kubernetes..."
     
-    # Apply resources in order
     log_info "Creating namespace..."
     kubectl apply -f "$SCRIPT_DIR/namespace.yaml"
     
@@ -115,30 +85,33 @@ deploy_k8s() {
     log_info "Creating PersistentVolumeClaim..."
     kubectl apply -f "$SCRIPT_DIR/pvc.yaml"
     
-    log_info "Creating Deployment..."
+    log_info "Creating API Service..."
+    kubectl apply -f "$SCRIPT_DIR/service.yaml"
+    
+    log_info "Creating API Deployment..."
     kubectl apply -f "$SCRIPT_DIR/deployment.yaml"
     
-    log_success "Base deployment completed"
+    log_info "Creating Nginx ConfigMap..."
+    kubectl apply -f "$SCRIPT_DIR/nginx-configmap.yaml"
     
-    # Ask about optional resources
-    echo ""
-    read -p "Deploy CronJob for scheduled screenshots? (y/N): " deploy_cronjob
-    if [[ "$deploy_cronjob" =~ ^[Yy]$ ]]; then
-        kubectl apply -f "$SCRIPT_DIR/cronjob.yaml"
-        log_success "CronJob deployed"
-    fi
+    log_info "Creating Nginx Deployment..."
+    kubectl apply -f "$SCRIPT_DIR/nginx-deployment.yaml"
+    
+    log_info "Creating Nginx Service..."
+    kubectl apply -f "$SCRIPT_DIR/nginx-service.yaml"
+    
+    log_success "Deployment completed"
 }
 
-# Wait for deployment to be ready
 wait_for_deployment() {
-    log_info "Waiting for deployment to be ready..."
+    log_info "Waiting for deployments to be ready..."
     
-    kubectl -n "$NAMESPACE" rollout status deployment/playwright-screenshot --timeout=300s
+    kubectl -n "$NAMESPACE" rollout status deployment/playwright-screenshot-api --timeout=300s
+    kubectl -n "$NAMESPACE" rollout status deployment/nginx --timeout=120s
     
-    log_success "Deployment is ready"
+    log_success "All deployments are ready"
 }
 
-# Show status
 show_status() {
     echo ""
     log_info "Deployment Status:"
@@ -146,51 +119,64 @@ show_status() {
     
     echo ""
     echo "Pods:"
-    kubectl -n "$NAMESPACE" get pods
+    kubectl -n "$NAMESPACE" get pods -o wide
     
     echo ""
-    echo "Deployment:"
+    echo "Services:"
+    kubectl -n "$NAMESPACE" get svc
+    
+    echo ""
+    echo "Deployments:"
     kubectl -n "$NAMESPACE" get deployment
     
+    # Get external IP if LoadBalancer is ready
     echo ""
-    echo "PVC:"
-    kubectl -n "$NAMESPACE" get pvc
+    EXTERNAL_IP=$(kubectl -n "$NAMESPACE" get svc nginx -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+    NODE_PORT=$(kubectl -n "$NAMESPACE" get svc nginx-nodeport -o jsonpath='{.spec.ports[0].nodePort}' 2>/dev/null || echo "30080")
     
-    if kubectl -n "$NAMESPACE" get cronjob &> /dev/null 2>&1; then
-        echo ""
-        echo "CronJobs:"
-        kubectl -n "$NAMESPACE" get cronjob
+    if [ -n "$EXTERNAL_IP" ]; then
+        echo "External IP: $EXTERNAL_IP"
+        echo "API Endpoint: http://$EXTERNAL_IP/screenshot"
+    else
+        echo "LoadBalancer IP pending... Use NodePort for now:"
+        echo "API Endpoint: http://<node-ip>:$NODE_PORT/screenshot"
     fi
 }
 
-# Usage instructions
 show_usage() {
     echo ""
-    log_info "Usage Instructions:"
+    log_info "API Usage Examples:"
     echo "===================="
     echo ""
-    echo "1. Run a one-time screenshot job:"
-    echo "   kubectl -n $NAMESPACE create job screenshot-\$(date +%s) --from=job/screenshot-job"
+    echo "1. Take a screenshot:"
+    echo '   curl -X POST http://<IP>/screenshot \'
+    echo '     -H "Content-Type: application/json" \'
+    echo '     -d '"'"'{"url": "https://example.com"}'"'"
     echo ""
-    echo "2. Execute screenshot in running pod:"
-    echo "   POD=\$(kubectl -n $NAMESPACE get pod -l app=playwright-screenshot -o jsonpath='{.items[0].metadata.name}')"
-    echo "   kubectl -n $NAMESPACE exec -it \$POD -- /app/entrypoint.sh 'https://example.com' '/app/screenshots/test.png'"
+    echo "2. Take screenshot with options:"
+    echo '   curl -X POST http://<IP>/screenshot \'
+    echo '     -H "Content-Type: application/json" \'
+    echo '     -d '"'"'{"url": "https://github.com", "width": 1280, "height": 720, "full_page": false}'"'"
     echo ""
-    echo "3. Copy screenshots from pod:"
-    echo "   kubectl -n $NAMESPACE cp \$POD:/app/screenshots/test.png ./test.png"
+    echo "3. List screenshots:"
+    echo '   curl http://<IP>/screenshots'
     echo ""
-    echo "4. View logs:"
-    echo "   kubectl -n $NAMESPACE logs -l app=playwright-screenshot"
+    echo "4. Download a screenshot:"
+    echo '   curl -O http://<IP>/screenshots/<filename>'
     echo ""
-    echo "5. Scale deployment:"
-    echo "   kubectl -n $NAMESPACE scale deployment/playwright-screenshot --replicas=3"
+    echo "5. Health check:"
+    echo '   curl http://<IP>/health'
+    echo ""
+    echo "6. Port-forward for local testing:"
+    echo "   kubectl -n $NAMESPACE port-forward svc/nginx 8080:80"
+    echo "   curl -X POST http://localhost:8080/screenshot -H 'Content-Type: application/json' -d '{\"url\": \"https://example.com\"}'"
     echo ""
 }
 
-# Main execution
 main() {
     echo "========================================"
     echo "  Playwright Screenshot K8s Deployer"
+    echo "  (API + Nginx)"
     echo "========================================"
     echo ""
     
