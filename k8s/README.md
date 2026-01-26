@@ -166,3 +166,123 @@ kubectl delete namespace playwright-screenshot
 
 1. 确认 PVC 已绑定：`kubectl -n playwright-screenshot get pvc`
 2. 检查存储类是否支持所需的访问模式
+
+### 使用 Docker Desktop 内置 K8s
+
+```
+# 1. 打开 Docker Desktop
+# 2. Settings → Kubernetes → Enable Kubernetes
+# 3. 等待启动完成，然后运行：
+kubectl config use-context docker-desktop
+```
+
+```
+❯ kubectl config use-context docker-desktop
+
+Switched to context "docker-desktop".
+
+~/PyPro/playwright-screenshot/k8s main
+❯  ./deploy.sh
+
+========================================
+  Playwright Screenshot K8s Deployer
+========================================
+
+[INFO] Checking prerequisites...
+[SUCCESS] Prerequisites check passed
+[INFO] Building Docker image...
+[+] Building 0.5s (16/16) FINISHED                                                                                                docker:desktop-linux
+ => [internal] load build definition from Dockerfile                                                                                              0.0s
+ => => transferring dockerfile: 2.08kB                                                                                                            0.0s
+ => [internal] load metadata for docker.io/library/ubuntu:24.04                                                                                   0.0s
+ => [internal] load .dockerignore                                                                                                                 0.0s
+ => => transferring context: 2B                                                                                                                   0.0s
+ => [ 1/11] FROM docker.io/library/ubuntu:24.04@sha256:cd1dba651b3080c3686ecf4e3c4220f026b521fb76978881737d24f200828b2b                           0.0s
+ => => resolve docker.io/library/ubuntu:24.04@sha256:cd1dba651b3080c3686ecf4e3c4220f026b521fb76978881737d24f200828b2b                             0.0s
+ => [internal] load build context                                                                                                                 0.0s
+ => => transferring context: 143B                                                                                                                 0.0s
+ => CACHED [ 2/11] RUN apt-get update && apt-get install -y     python3     python3-pip     python3-venv     unzip     libasound2t64     libatk-  0.0s
+ => CACHED [ 3/11] WORKDIR /app                                                                                                                   0.0s
+ => CACHED [ 4/11] COPY requirements.txt .                                                                                                        0.0s
+ => CACHED [ 5/11] RUN pip3 install --no-cache-dir -r requirements.txt --break-system-packages                                                    0.0s
+ => CACHED [ 6/11] COPY chrome-linux64.zip /tmp/chrome-linux64.zip                                                                                0.0s
+ => CACHED [ 7/11] RUN mkdir -p /opt/chrome     && unzip /tmp/chrome-linux64.zip -d /opt/chrome     && rm /tmp/chrome-linux64.zip     && chmod +  0.0s
+ => CACHED [ 8/11] COPY screenshot.py .                                                                                                           0.0s
+ => CACHED [ 9/11] COPY entrypoint.sh .                                                                                                           0.0s
+ => CACHED [10/11] RUN chmod +x entrypoint.sh                                                                                                     0.0s
+ => CACHED [11/11] RUN mkdir -p /app/screenshots                                                                                                  0.0s
+ => exporting to image                                                                                                                            0.2s
+ => => exporting layers                                                                                                                           0.0s
+ => => exporting manifest sha256:6e3a9d85898b7f03b9f69315a41dcefe38c0539d355ee6978d78da55d5ebcdbe                                                 0.0s
+ => => exporting config sha256:257cc62cd3ecd6252f54c9aeff58c88e59bce3e5ecfad43d51d14ce51d7ff134                                                   0.0s
+ => => exporting attestation manifest sha256:eae432a63135faf92a1ec64cfb1a5de3d6d4fbc1d429f14fe4649fe4b03021e4                                     0.0s
+ => => exporting manifest list sha256:12b9e5187376e31a0b6aca66791c86f93d1a3879bf06234442122f31a9b58f50                                            0.0s
+ => => naming to docker.io/library/playwright-screenshot:latest                                                                                   0.0s
+ => => unpacking to docker.io/library/playwright-screenshot:latest                                                                                0.0s
+
+View build details: docker-desktop://dashboard/build/desktop-linux/desktop-linux/mdu919ovyjyts50rfvlk0hyqd
+[SUCCESS] Image built: playwright-screenshot:latest
+[INFO] Deploying to Kubernetes...
+[INFO] Creating namespace...
+namespace/playwright-screenshot created
+[INFO] Creating ConfigMap...
+configmap/playwright-screenshot-config created
+[INFO] Creating PersistentVolumeClaim...
+persistentvolumeclaim/playwright-screenshot-pvc created
+[INFO] Creating Deployment...
+deployment.apps/playwright-screenshot created
+[SUCCESS] Base deployment completed
+
+Deploy CronJob for scheduled screenshots? (y/N): y
+cronjob.batch/scheduled-screenshot created
+[SUCCESS] CronJob deployed
+[INFO] Waiting for deployment to be ready...
+Waiting for deployment "playwright-screenshot" rollout to finish: 0 of 2 updated replicas are available...
+Waiting for deployment "playwright-screenshot" rollout to finish: 1 of 2 updated replicas are available...
+deployment "playwright-screenshot" successfully rolled out
+[SUCCESS] Deployment is ready
+
+[INFO] Deployment Status:
+====================
+
+Pods:
+NAME                                     READY   STATUS    RESTARTS   AGE
+playwright-screenshot-84d75d7f99-5fl7z   1/1     Running   0          14s
+playwright-screenshot-84d75d7f99-d2f5m   1/1     Running   0          14s
+
+Deployment:
+NAME                    READY   UP-TO-DATE   AVAILABLE   AGE
+playwright-screenshot   2/2     2            2           15s
+
+PVC:
+NAME                        STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS   VOLUMEATTRIBUTESCLASS   AGE
+playwright-screenshot-pvc   Bound    pvc-57d8c6c8-aabd-419b-b9e9-ceb53c217e33   10Gi       RWO            hostpath       <unset>                 16s
+
+CronJobs:
+NAME                   SCHEDULE    TIMEZONE   SUSPEND   ACTIVE   LAST SCHEDULE   AGE
+scheduled-screenshot   0 * * * *   <none>     False     0        <none>          8s
+
+[INFO] Usage Instructions:
+====================
+
+1. Run a one-time screenshot job:
+   kubectl -n playwright-screenshot create job screenshot-$(date +%s) --from=job/screenshot-job
+
+2. Execute screenshot in running pod:
+   POD=$(kubectl -n playwright-screenshot get pod -l app=playwright-screenshot -o jsonpath='{.items[0].metadata.name}')
+   kubectl -n playwright-screenshot exec -it $POD -- /app/entrypoint.sh 'https://example.com' '/app/screenshots/test.png'
+
+3. Copy screenshots from pod:
+   kubectl -n playwright-screenshot cp $POD:/app/screenshots/test.png ./test.png
+
+4. View logs:
+   kubectl -n playwright-screenshot logs -l app=playwright-screenshot
+
+5. Scale deployment:
+   kubectl -n playwright-screenshot scale deployment/playwright-screenshot --replicas=3
+
+[SUCCESS] Deployment completed successfully!
+
+~/PyPro/playwright-screenshot/k8s main 20s
+❯
+```
