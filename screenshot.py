@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Playwright Screenshot Tool (Offline Chrome Version)
+Playwright Screenshot Tool (Firefox Version)
 
 Usage:
     python screenshot.py [URL] [OUTPUT_PATH] [OPTIONS]
@@ -12,14 +12,9 @@ Examples:
 """
 
 import argparse
-import os
 import sys
 from pathlib import Path
 from playwright.sync_api import sync_playwright
-
-
-# Get Chrome path from environment variable or use default
-CHROME_PATH = os.environ.get('CHROME_PATH', '/opt/chrome/chrome-linux64/chrome')
 
 
 def take_screenshot(
@@ -48,11 +43,10 @@ def take_screenshot(
     """
     try:
         with sync_playwright() as p:
-            # Launch browser using local Chrome executable
-            print(f"🔧 Using Chrome at: {CHROME_PATH}")
-            browser = p.chromium.launch(
-                headless=True,
-                executable_path=CHROME_PATH
+            # Launch Firefox browser
+            print("🔧 Using Firefox browser")
+            browser = p.firefox.launch(
+                headless=True
             )
             
             # Create a new page with specified viewport

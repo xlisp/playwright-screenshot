@@ -1,6 +1,6 @@
 # Playwright Screenshot Docker Image
 # Based on Ubuntu 24.04
-# REST API Service with local Chrome browser
+# REST API Service with Firefox browser
 
 FROM ubuntu:24.04
 
@@ -9,34 +9,17 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
 ENV PORT=8080
 
-# Update and install system dependencies
+# Update and install system dependencies including Firefox
 RUN apt-get update && apt-get install -y \
     python3 \
     python3-pip \
     python3-venv \
-    unzip \
-    # Playwright/Chrome browser dependencies
-    libasound2t64 \
-    libatk-bridge2.0-0t64 \
-    libatk1.0-0t64 \
-    libatspi2.0-0t64 \
-    libcairo2 \
-    libcups2t64 \
-    libdbus-1-3 \
-    libdrm2 \
-    libgbm1 \
-    libglib2.0-0t64 \
-    libnspr4 \
-    libnss3 \
-    libpango-1.0-0 \
-    libx11-6 \
-    libxcb1 \
-    libxcomposite1 \
-    libxdamage1 \
-    libxext6 \
-    libxfixes3 \
-    libxkbcommon0 \
-    libxrandr2 \
+    # Firefox browser
+    firefox \
+    # Playwright/Firefox browser dependencies
+    libgtk-3-0 \
+    libdbus-glib-1-2 \
+    libxt6 \
     xvfb \
     # Fonts for proper rendering
     fonts-noto-color-emoji \
@@ -58,16 +41,6 @@ WORKDIR /app
 # Copy requirements and install Python dependencies
 COPY requirements.txt .
 RUN pip3 install --no-cache-dir -r requirements.txt --break-system-packages
-
-# Copy and install local Chrome browser
-COPY chrome-linux64.zip /tmp/chrome-linux64.zip
-RUN mkdir -p /opt/chrome \
-    && unzip /tmp/chrome-linux64.zip -d /opt/chrome \
-    && rm /tmp/chrome-linux64.zip \
-    && chmod +x /opt/chrome/chrome-linux64/chrome
-
-# Set Chrome executable path environment variable
-ENV CHROME_PATH=/opt/chrome/chrome-linux64/chrome
 
 # Copy application code
 COPY screenshot.py .

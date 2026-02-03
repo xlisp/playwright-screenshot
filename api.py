@@ -2,7 +2,7 @@
 """
 Playwright Screenshot REST API Service
 
-Provides a REST API for taking screenshots of web pages.
+Provides a REST API for taking screenshots of web pages using Firefox.
 
 Endpoints:
     POST /screenshot - Take a screenshot of a URL
@@ -11,22 +11,21 @@ Endpoints:
 
 Usage:
     python api.py
-    
+
 Environment Variables:
     PORT - Server port (default: 8080)
-    CHROME_PATH - Path to Chrome executable
 """
 
 import os
-import sys
 import uuid
 import hashlib
+import shutil
 from pathlib import Path
 from datetime import datetime
 from flask import Flask, request, jsonify, send_file
 from werkzeug.exceptions import HTTPException
 
-from screenshot import take_screenshot, CHROME_PATH
+from screenshot import take_screenshot
 
 # Configuration
 PORT = int(os.environ.get('PORT', 8080))
@@ -127,14 +126,14 @@ def validate_screenshot_params(data: dict) -> tuple[dict, list]:
 @app.route('/health', methods=['GET'])
 def health_check():
     """Health check endpoint."""
-    chrome_exists = Path(CHROME_PATH).exists()
+    firefox_exists = shutil.which('firefox') is not None
     return jsonify({
-        'status': 'healthy' if chrome_exists else 'degraded',
-        'chrome_path': CHROME_PATH,
-        'chrome_available': chrome_exists,
+        'status': 'healthy' if firefox_exists else 'degraded',
+        'browser': 'firefox',
+        'firefox_available': firefox_exists,
         'screenshots_dir': str(SCREENSHOTS_DIR),
         'timestamp': datetime.now().isoformat()
-    }), 200 if chrome_exists else 503
+    }), 200 if firefox_exists else 503
 
 
 @app.route('/screenshot', methods=['POST'])
@@ -347,7 +346,7 @@ if __name__ == '__main__':
     print(f"🚀 Playwright Screenshot API Server")
     print(f"================================")
     print(f"Port: {PORT}")
-    print(f"Chrome: {CHROME_PATH}")
+    print(f"Browser: Firefox")
     print(f"Screenshots: {SCREENSHOTS_DIR}")
     print(f"================================")
     print(f"Endpoints:")
@@ -357,5 +356,5 @@ if __name__ == '__main__':
     print(f"  DELETE /screenshots/<f> - Delete a screenshot")
     print(f"  GET  /health         - Health check")
     print(f"================================")
-    
+
     app.run(host='0.0.0.0', port=PORT, debug=False)
