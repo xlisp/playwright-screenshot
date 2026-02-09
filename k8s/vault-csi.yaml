@@ -1,0 +1,140 @@
+# ═══════════════════════════════════════════════════════════════════════
+# Vault CSI Provider — Alternative to Agent Injector
+# ═══════════════════════════════════════════════════════════════════════
+#
+# Uses the Secrets Store CSI Driver + Vault Provider to mount secrets
+# as a volume in the Pod. No sidecar needed.
+#
+# Prerequisites:
+#   1. Secrets Store CSI Driver:
+#      helm install csi-secrets-store secrets-store-csi-driver/secrets-store-csi-driver \
+#        --namespace kube-system
+#
+#   2. Vault CSI Provider:
+#      helm install vault hashicorp/vault \
+#        --namespace vault --create-namespace \
+#        --set "csi.enabled=true" \
+#        --set "injector.enabled=false"
+#
+---
+# SecretProviderClass — tells CSI what to fetch from Vault
+apiVersion: secrets-store.csi.x-k8s.io/v1
+kind: SecretProviderClass
+metadata:
+  name: vault-github-token
+  namespace: playwright-screenshot
+  labels:
+    app: playwright-screenshot
+spec:
+  provider: vault
+  parameters:
+    # Vault address
+    vaultAddress: "http://vault.vault.svc.cluster.local:8200"
+    # Kubernetes auth
+    roleName: "playwright-screenshot"
+    # Secrets to mount
+    objects: |
+      - objectName: "github-token"
+        secretPath: "secret/data/playwright-screenshot/github"
+        secretKey: "github_token"
+  # Optional: sync to a K8s Secret so it can also be used as env var
+  secretObjects:
+    - secretName: vault-github-token-synced
+      type: Opaque
+      data:
+        - objectName: github-token
+          key: GITHUB_TOKEN
+
+---
+# Deployment using CSI volume mount (no Vault Agent sidecar)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: playwright-screenshot-api-csi
+  namespace: playwright-screenshot
+  labels:
+    app: playwright-screenshot
+    component: api
+    vault-method: csi
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: playwright-screenshot
+      component: api
+  template:
+    metadata:
+      labels:
+        app: playwright-screenshot
+        component: api
+    spec:
+      serviceAccountName: playwright-screenshot
+      containers:
+        - name: playwright-screenshot-api
+          image: playwright-screenshot:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "2Gi"
+              cpu: "1000m"
+          envFrom:
+            - configMapRef:
+                name: playwright-screenshot-config
+          env:
+            - name: PORT
+              value: "8080"
+            # Points to the CSI-mounted secret file
+            - name: VAULT_SECRET_FILE
+              value: "/vault/secrets/github-token"
+            # Also available as env (from synced K8s Secret)
+            - name: GITHUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: vault-github-token-synced
+                  key: GITHUB_TOKEN
+                  optional: true
+          volumeMounts:
+            - name: screenshots-storage
+              mountPath: /app/screenshots
+            - name: dshm
+              mountPath: /dev/shm
+            - name: vault-secrets
+              mountPath: /vault/secrets
+              readOnly: true
+          securityContext:
+            capabilities:
+              add:
+                - SYS_ADMIN
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 30
+      volumes:
+        - name: screenshots-storage
+          persistentVolumeClaim:
+            claimName: playwright-screenshot-pvc
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: "2Gi"
+        - name: vault-secrets
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: vault-github-token

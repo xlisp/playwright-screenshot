@@ -1,4 +1,19 @@
-# Deployment for Playwright Screenshot API Service
+# ═══════════════════════════════════════════════════════════════════════
+# Deployment with Vault Agent Injector
+# ═══════════════════════════════════════════════════════════════════════
+#
+# The Vault Agent Injector (requires vault-agent-injector Helm chart)
+# auto-injects a sidecar that:
+#   1. Authenticates to Vault via K8s SA JWT
+#   2. Renders the secret to /vault/secrets/github-token
+#   3. Keeps it refreshed on TTL expiry
+#
+# Prerequisites:
+#   helm install vault hashicorp/vault \
+#     --namespace vault --create-namespace \
+#     --set "injector.enabled=true" \
+#     --set "server.dev.enabled=true"       # dev only
+#
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -18,7 +33,22 @@ spec:
       labels:
         app: playwright-screenshot
         component: api
+      annotations:
+        # ── Vault Agent Injector Annotations ────────────────────────
+        vault.hashicorp.com/agent-inject: "true"
+        vault.hashicorp.com/role: "playwright-screenshot"
+        vault.hashicorp.com/agent-inject-secret-github-token: "secret/data/playwright-screenshot/github"
+        # Template: extract only the github_token field → plain text file
+        vault.hashicorp.com/agent-inject-template-github-token: |
+          {{- with secret "secret/data/playwright-screenshot/github" -}}
+          {{ .Data.data.github_token }}
+          {{- end -}}
+        # Keep sidecar running to refresh on TTL expiry
+        vault.hashicorp.com/agent-pre-populate-only: "false"
+        # Vault address (in-cluster)
+        vault.hashicorp.com/agent-inject-token: "false"
     spec:
+      serviceAccountName: playwright-screenshot
       containers:
         - name: playwright-screenshot-api
           image: playwright-screenshot:latest
@@ -40,11 +70,30 @@ spec:
           env:
             - name: PORT
               value: "8080"
+            # Vault Agent writes the secret to this file
+            - name: VAULT_SECRET_FILE
+              value: "/vault/secrets/github-token"
+            # Vault address for direct API fallback
+            - name: VAULT_ADDR
+              value: "http://vault.vault.svc.cluster.local:8200"
+            # Vault K8s auth role
+            - name: VAULT_K8S_ROLE
+              value: "playwright-screenshot"
+            # Fallback: K8s Secret → env var
+            # Uncomment if you prefer K8s Secret as primary
+            # - name: GITHUB_TOKEN
+            #   valueFrom:
+            #     secretKeyRef:
+            #       name: github-token-secret
+            #       key: GITHUB_TOKEN
+            #       optional: true
           volumeMounts:
             - name: screenshots-storage
               mountPath: /app/screenshots
             - name: dshm
               mountPath: /dev/shm
+            # Vault Agent writes here automatically via annotations
+            # No explicit volumeMount needed — the injector adds it
           securityContext:
             capabilities:
               add:

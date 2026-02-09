@@ -1,9 +1,13 @@
 #!/bin/bash
 #
 # Playwright Screenshot K8s Deployment Script
-# Deploys API service with Nginx reverse proxy
+# Deploys API service with Nginx reverse proxy + Vault integration
 #
-# Usage: ./deploy.sh [REGISTRY] [TAG]
+# Usage:
+#   ./deploy.sh [REGISTRY] [TAG]
+#   ./deploy.sh --vault-method=agent    # Vault Agent Injector (default)
+#   ./deploy.sh --vault-method=csi      # Vault CSI Provider
+#   ./deploy.sh --vault-method=secret   # Plain K8s Secret (no Vault)
 #
 
 set -e
@@ -12,182 +16,170 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 NAMESPACE="playwright-screenshot"
 
-REGISTRY="${1:-}"
-TAG="${2:-latest}"
+REGISTRY=""
+TAG="latest"
 IMAGE_NAME="playwright-screenshot"
+VAULT_METHOD="agent"  # agent | csi | secret
 
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m'
+# Parse arguments
+for arg in "$@"; do
+    case $arg in
+        --vault-method=*) VAULT_METHOD="${arg#*=}"; shift ;;
+        --*) shift ;;
+        *)
+            if [ -z "$REGISTRY" ]; then REGISTRY="$arg"
+            elif [ "$TAG" = "latest" ]; then TAG="$arg"
+            fi
+            ;;
+    esac
+done
 
-log_info() { echo -e "${BLUE}[INFO]${NC} $1"; }
-log_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
-log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
-log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
+RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
+log_info()    { echo -e "${BLUE}[INFO]${NC} $1"; }
+log_success() { echo -e "${GREEN}[OK]${NC} $1"; }
+log_warn()    { echo -e "${YELLOW}[WARN]${NC} $1"; }
+log_error()   { echo -e "${RED}[ERR]${NC} $1"; }
 
 check_prerequisites() {
     log_info "Checking prerequisites..."
-    
-    if ! command -v kubectl &> /dev/null; then
-        log_error "kubectl is not installed"
-        exit 1
-    fi
-    
-    if ! command -v docker &> /dev/null; then
-        log_error "docker is not installed"
-        exit 1
-    fi
-    
-    if ! kubectl cluster-info &> /dev/null; then
-        log_error "Cannot connect to Kubernetes cluster"
-        exit 1
-    fi
-    
-    log_success "Prerequisites check passed"
+    command -v kubectl &>/dev/null || { log_error "kubectl not installed"; exit 1; }
+    command -v docker  &>/dev/null || { log_error "docker not installed"; exit 1; }
+    kubectl cluster-info &>/dev/null || { log_error "Cannot reach K8s cluster"; exit 1; }
+    log_success "Prerequisites OK"
 }
 
 build_image() {
     log_info "Building Docker image..."
-    
     cd "$PROJECT_DIR"
-    
     if [ -n "$REGISTRY" ]; then
         FULL_IMAGE="${REGISTRY}/${IMAGE_NAME}:${TAG}"
     else
         FULL_IMAGE="${IMAGE_NAME}:${TAG}"
     fi
-    
     docker build -t "$FULL_IMAGE" .
     log_success "Image built: $FULL_IMAGE"
-    
     if [ -n "$REGISTRY" ]; then
-        log_info "Pushing image to registry..."
         docker push "$FULL_IMAGE"
         log_success "Image pushed: $FULL_IMAGE"
-        
-        log_info "Updating deployment YAML with image: $FULL_IMAGE"
-        sed -i.bak "s|image: playwright-screenshot:latest|image: $FULL_IMAGE|g" "$SCRIPT_DIR/deployment.yaml"
-        rm -f "$SCRIPT_DIR"/*.bak
     fi
 }
 
 deploy_k8s() {
-    log_info "Deploying to Kubernetes..."
-    
-    log_info "Creating namespace..."
+    log_info "Deploying to Kubernetes (vault-method=${VAULT_METHOD})..."
+
+    # Core resources
     kubectl apply -f "$SCRIPT_DIR/namespace.yaml"
-    
-    log_info "Creating ConfigMap..."
     kubectl apply -f "$SCRIPT_DIR/configmap.yaml"
-    
-    log_info "Creating PersistentVolumeClaim..."
     kubectl apply -f "$SCRIPT_DIR/pvc.yaml"
-    
-    log_info "Creating API Service..."
     kubectl apply -f "$SCRIPT_DIR/service.yaml"
-    
-    log_info "Creating API Deployment..."
-    kubectl apply -f "$SCRIPT_DIR/deployment.yaml"
-    
-    log_info "Creating Nginx ConfigMap..."
+
+    # ServiceAccount (needed for all Vault methods)
+    kubectl apply -f "$SCRIPT_DIR/vault-serviceaccount.yaml"
+
+    # Deployment — pick by vault method
+    case "$VAULT_METHOD" in
+        agent)
+            log_info "Using Vault Agent Injector..."
+            kubectl apply -f "$SCRIPT_DIR/deployment.yaml"
+            ;;
+        csi)
+            log_info "Using Vault CSI Provider..."
+            kubectl apply -f "$SCRIPT_DIR/vault-csi.yaml"
+            ;;
+        secret)
+            log_info "Using plain K8s Secret (no Vault)..."
+            kubectl apply -f "$SCRIPT_DIR/github-secret.yaml"
+            kubectl apply -f "$SCRIPT_DIR/deployment-k8s-secret.yaml"
+            ;;
+        *)
+            log_error "Unknown vault-method: ${VAULT_METHOD}"
+            log_info "Valid options: agent, csi, secret"
+            exit 1
+            ;;
+    esac
+
+    # Nginx
     kubectl apply -f "$SCRIPT_DIR/nginx-configmap.yaml"
-    
-    log_info "Creating Nginx Deployment..."
     kubectl apply -f "$SCRIPT_DIR/nginx-deployment.yaml"
-    
-    log_info "Creating Nginx Service..."
     kubectl apply -f "$SCRIPT_DIR/nginx-service.yaml"
-    
-    log_success "Deployment completed"
+
+    log_success "K8s resources applied"
 }
 
 wait_for_deployment() {
-    log_info "Waiting for deployments to be ready..."
-    
-    kubectl -n "$NAMESPACE" rollout status deployment/playwright-screenshot-api --timeout=300s
-    kubectl -n "$NAMESPACE" rollout status deployment/nginx --timeout=120s
-    
-    log_success "All deployments are ready"
+    log_info "Waiting for rollout..."
+    kubectl -n "$NAMESPACE" rollout status deployment/playwright-screenshot-api --timeout=300s 2>/dev/null || \
+    kubectl -n "$NAMESPACE" rollout status deployment/playwright-screenshot-api-csi --timeout=300s 2>/dev/null || true
+    kubectl -n "$NAMESPACE" rollout status deployment/nginx --timeout=120s 2>/dev/null || true
+    log_success "Rollout complete"
 }
 
 show_status() {
     echo ""
-    log_info "Deployment Status:"
-    echo "===================="
-    
+    log_info "═══ Deployment Status ═══"
+    echo ""
+    echo "Vault Method: ${VAULT_METHOD}"
     echo ""
     echo "Pods:"
     kubectl -n "$NAMESPACE" get pods -o wide
-    
     echo ""
     echo "Services:"
     kubectl -n "$NAMESPACE" get svc
-    
     echo ""
-    echo "Deployments:"
-    kubectl -n "$NAMESPACE" get deployment
-    
-    # Get external IP if LoadBalancer is ready
-    echo ""
-    EXTERNAL_IP=$(kubectl -n "$NAMESPACE" get svc nginx -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
-    NODE_PORT=$(kubectl -n "$NAMESPACE" get svc nginx-nodeport -o jsonpath='{.spec.ports[0].nodePort}' 2>/dev/null || echo "30080")
-    
-    if [ -n "$EXTERNAL_IP" ]; then
-        echo "External IP: $EXTERNAL_IP"
-        echo "API Endpoint: http://$EXTERNAL_IP/screenshot"
-    else
-        echo "LoadBalancer IP pending... Use NodePort for now:"
-        echo "API Endpoint: http://<node-ip>:$NODE_PORT/screenshot"
-    fi
 }
 
 show_usage() {
     echo ""
-    log_info "API Usage Examples:"
-    echo "===================="
+    log_info "═══ API Usage ═══"
     echo ""
-    echo "1. Take a screenshot:"
-    echo '   curl -X POST http://<IP>/screenshot \'
-    echo '     -H "Content-Type: application/json" \'
-    echo '     -d '"'"'{"url": "https://example.com"}'"'"
+    echo "Port-forward:"
+    echo "  kubectl -n $NAMESPACE port-forward svc/nginx 8080:80"
     echo ""
-    echo "2. Take screenshot with options:"
-    echo '   curl -X POST http://<IP>/screenshot \'
-    echo '     -H "Content-Type: application/json" \'
-    echo '     -d '"'"'{"url": "https://github.com", "width": 1280, "height": 720, "full_page": false}'"'"
+    echo "GitHub API:"
+    echo "  curl http://localhost:8080/github/octocat"
+    echo "  curl http://localhost:8080/github/octocat/repos"
+    echo "  curl http://localhost:8080/github/octocat/page      # HTML"
+    echo "  curl -X POST http://localhost:8080/github/octocat/screenshot"
     echo ""
-    echo "3. List screenshots:"
-    echo '   curl http://<IP>/screenshots'
+    echo "Vault status:"
+    echo "  curl http://localhost:8080/vault/status"
     echo ""
-    echo "4. Download a screenshot:"
-    echo '   curl -O http://<IP>/screenshots/<filename>'
+    echo "Screenshot:"
+    echo '  curl -X POST http://localhost:8080/screenshot \'
+    echo '    -H "Content-Type: application/json" \'
+    echo '    -d '\''{"url": "https://github.com/octocat"}'\'
     echo ""
-    echo "5. Health check:"
-    echo '   curl http://<IP>/health'
-    echo ""
-    echo "6. Port-forward for local testing:"
-    echo "   kubectl -n $NAMESPACE port-forward svc/nginx 8080:80"
-    echo "   curl -X POST http://localhost:8080/screenshot -H 'Content-Type: application/json' -d '{\"url\": \"https://example.com\"}'"
-    echo ""
+
+    if [ "$VAULT_METHOD" = "secret" ]; then
+        echo "Store token (K8s Secret):"
+        echo "  kubectl create secret generic github-token-secret \\"
+        echo "    -n $NAMESPACE \\"
+        echo "    --from-literal=GITHUB_TOKEN=ghp_xxxxx \\"
+        echo "    --dry-run=client -o yaml | kubectl apply -f -"
+        echo ""
+    elif [ "$VAULT_METHOD" = "agent" ] || [ "$VAULT_METHOD" = "csi" ]; then
+        echo "Store token (Vault):"
+        echo "  vault kv put secret/playwright-screenshot/github github_token=ghp_xxxxx"
+        echo ""
+        echo "First-time setup:"
+        echo "  bash k8s/vault-setup.sh --github-token ghp_xxxxx"
+        echo ""
+    fi
 }
 
 main() {
-    echo "========================================"
+    echo "════════════════════════════════════════════"
     echo "  Playwright Screenshot K8s Deployer"
-    echo "  (API + Nginx)"
-    echo "========================================"
+    echo "  Vault method: ${VAULT_METHOD}"
+    echo "════════════════════════════════════════════"
     echo ""
-    
     check_prerequisites
     build_image
     deploy_k8s
     wait_for_deployment
     show_status
     show_usage
-    
-    log_success "Deployment completed successfully!"
+    log_success "Done! 🎉"
 }
 
 main "$@"
