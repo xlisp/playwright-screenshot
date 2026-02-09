@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # Playwright Screenshot K8s Deployment Script
-# Deploys API service with Nginx reverse proxy + Vault integration
+# Deploys API service with Nginx reverse proxy + Vault + Archive PVC
 #
 # Usage:
 #   ./deploy.sh [REGISTRY] [TAG]
@@ -21,7 +21,6 @@ TAG="latest"
 IMAGE_NAME="playwright-screenshot"
 VAULT_METHOD="agent"  # agent | csi | secret
 
-# Parse arguments
 for arg in "$@"; do
     case $arg in
         --vault-method=*) VAULT_METHOD="${arg#*=}"; shift ;;
@@ -70,10 +69,13 @@ deploy_k8s() {
     # Core resources
     kubectl apply -f "$SCRIPT_DIR/namespace.yaml"
     kubectl apply -f "$SCRIPT_DIR/configmap.yaml"
-    kubectl apply -f "$SCRIPT_DIR/pvc.yaml"
     kubectl apply -f "$SCRIPT_DIR/service.yaml"
 
-    # ServiceAccount (needed for all Vault methods)
+    # ⭐ Archive PVC — persistent storage that survives redeploy
+    log_info "Creating Archive PVC (persistent storage)..."
+    kubectl apply -f "$SCRIPT_DIR/archive-pvc.yaml"
+
+    # ServiceAccount
     kubectl apply -f "$SCRIPT_DIR/vault-serviceaccount.yaml"
 
     # Deployment — pick by vault method
@@ -93,7 +95,6 @@ deploy_k8s() {
             ;;
         *)
             log_error "Unknown vault-method: ${VAULT_METHOD}"
-            log_info "Valid options: agent, csi, secret"
             exit 1
             ;;
     esac
@@ -123,6 +124,9 @@ show_status() {
     echo "Pods:"
     kubectl -n "$NAMESPACE" get pods -o wide
     echo ""
+    echo "PVCs:"
+    kubectl -n "$NAMESPACE" get pvc
+    echo ""
     echo "Services:"
     kubectl -n "$NAMESPACE" get svc
     echo ""
@@ -135,36 +139,19 @@ show_usage() {
     echo "Port-forward:"
     echo "  kubectl -n $NAMESPACE port-forward svc/nginx 8080:80"
     echo ""
-    echo "GitHub API:"
-    echo "  curl http://localhost:8080/github/octocat"
-    echo "  curl http://localhost:8080/github/octocat/repos"
-    echo "  curl http://localhost:8080/github/octocat/page      # HTML"
-    echo "  curl -X POST http://localhost:8080/github/octocat/screenshot"
+    echo "GitHub profile → archive:"
+    echo "  curl http://localhost:8080/github/octocat/page           # HTML (auto-archived)"
+    echo "  curl -X POST http://localhost:8080/github/octocat/screenshot  # HTML + PNG (archived)"
     echo ""
-    echo "Vault status:"
-    echo "  curl http://localhost:8080/vault/status"
+    echo "Browse archive (persistent, survives redeploy):"
+    echo "  curl http://localhost:8080/archive                             # list users"
+    echo "  curl http://localhost:8080/archive/octocat                     # list snapshots"
+    echo "  curl http://localhost:8080/archive/octocat/latest/profile.html # latest HTML"
+    echo "  curl http://localhost:8080/archive/octocat/latest/profile.png  # latest screenshot"
     echo ""
-    echo "Screenshot:"
-    echo '  curl -X POST http://localhost:8080/screenshot \'
-    echo '    -H "Content-Type: application/json" \'
-    echo '    -d '\''{"url": "https://github.com/octocat"}'\'
+    echo "Debug archive PVC directly:"
+    echo "  kubectl -n $NAMESPACE exec -it deploy/playwright-screenshot-api -- ls -la /app/archive/"
     echo ""
-
-    if [ "$VAULT_METHOD" = "secret" ]; then
-        echo "Store token (K8s Secret):"
-        echo "  kubectl create secret generic github-token-secret \\"
-        echo "    -n $NAMESPACE \\"
-        echo "    --from-literal=GITHUB_TOKEN=ghp_xxxxx \\"
-        echo "    --dry-run=client -o yaml | kubectl apply -f -"
-        echo ""
-    elif [ "$VAULT_METHOD" = "agent" ] || [ "$VAULT_METHOD" = "csi" ]; then
-        echo "Store token (Vault):"
-        echo "  vault kv put secret/playwright-screenshot/github github_token=ghp_xxxxx"
-        echo ""
-        echo "First-time setup:"
-        echo "  bash k8s/vault-setup.sh --github-token ghp_xxxxx"
-        echo ""
-    fi
 }
 
 main() {

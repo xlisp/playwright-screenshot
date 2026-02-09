@@ -1,0 +1,40 @@
+# ═══════════════════════════════════════════════════════════════════════
+# PersistentVolumeClaim — Archive storage (survives redeploy)
+# ═══════════════════════════════════════════════════════════════════════
+#
+# This PVC stores all generated HTML pages, screenshots and JSON data.
+# It is mounted at /app/archive inside the Pod.
+#
+# ⚠️  Use ReadWriteMany (RWX) if replicas > 1.
+#     RWX requires a CSI driver that supports it:
+#       - NFS (nfs-subdir-external-provisioner)
+#       - AWS EFS (efs.csi.aws.com)
+#       - GCP Filestore (filestore.csi.storage.gke.io)
+#       - Azure Files (file.csi.azure.com)
+#       - Longhorn, CephFS, etc.
+#
+#     If your cluster only has block storage (RWO), set replicas=1
+#     or use the ReadWriteOnce variant below.
+#
+---
+# ── RWX variant (multi-replica safe) ─────────────────────────────────
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: github-archive-pvc
+  namespace: playwright-screenshot
+  labels:
+    app: playwright-screenshot
+    component: archive
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 20Gi
+  # ── Pick ONE storageClassName that supports RWX in your cluster ──
+  # storageClassName: nfs-client           # NFS provisioner
+  # storageClassName: efs-sc               # AWS EFS
+  # storageClassName: filestore-sc         # GCP Filestore
+  # storageClassName: azurefile-csi        # Azure Files
+  # storageClassName: longhorn             # Longhorn
