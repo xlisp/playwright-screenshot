@@ -39,7 +39,6 @@ Environment Variables:
 """
 
 import os
-import sys
 import uuid
 import json
 import shutil
@@ -152,6 +151,23 @@ def _archive_files(username: str, files: dict[str, Path]) -> dict:
     return {"timestamp": ts, "archived": archived}
 
 
+def _validate_int_param(
+    data: dict, key: str, default: int, min_val: int, max_val: int,
+    params: dict, errors: list, unit: str = "",
+) -> None:
+    """Validate an integer parameter with range check. Mutates params/errors in place."""
+    raw = data.get(key, default)
+    try:
+        value = int(raw)
+        suffix = f" {unit}" if unit else ""
+        if value < min_val or value > max_val:
+            errors.append(f"'{key}' must be between {min_val} and {max_val}{suffix}")
+        else:
+            params[key] = value
+    except (ValueError, TypeError):
+        errors.append(f"'{key}' must be an integer")
+
+
 def validate_screenshot_params(data: dict) -> tuple[dict, list]:
     errors = []
     params = {}
@@ -164,50 +180,16 @@ def validate_screenshot_params(data: dict) -> tuple[dict, list]:
     else:
         params['url'] = url
 
-    width = data.get('width', 1920)
-    try:
-        width = int(width)
-        if width < 320 or width > MAX_WIDTH:
-            errors.append(f"'width' must be between 320 and {MAX_WIDTH}")
-        else:
-            params['width'] = width
-    except (ValueError, TypeError):
-        errors.append("'width' must be an integer")
-
-    height = data.get('height', 1080)
-    try:
-        height = int(height)
-        if height < 240 or height > MAX_HEIGHT:
-            errors.append(f"'height' must be between 240 and {MAX_HEIGHT}")
-        else:
-            params['height'] = height
-    except (ValueError, TypeError):
-        errors.append("'height' must be an integer")
+    _validate_int_param(data, 'width', 1920, 320, MAX_WIDTH, params, errors)
+    _validate_int_param(data, 'height', 1080, 240, MAX_HEIGHT, params, errors)
 
     full_page = data.get('full_page', True)
     if isinstance(full_page, str):
         full_page = full_page.lower() in ('true', '1', 'yes')
     params['full_page'] = bool(full_page)
 
-    wait_time = data.get('wait_time', 3000)
-    try:
-        wait_time = int(wait_time)
-        if wait_time < 0 or wait_time > 30000:
-            errors.append("'wait_time' must be between 0 and 30000 milliseconds")
-        else:
-            params['wait_time'] = wait_time
-    except (ValueError, TypeError):
-        errors.append("'wait_time' must be an integer")
-
-    timeout = data.get('timeout', 60000)
-    try:
-        timeout = int(timeout)
-        if timeout < 5000 or timeout > MAX_TIMEOUT:
-            errors.append(f"'timeout' must be between 5000 and {MAX_TIMEOUT} milliseconds")
-        else:
-            params['timeout'] = timeout
-    except (ValueError, TypeError):
-        errors.append("'timeout' must be an integer")
+    _validate_int_param(data, 'wait_time', 3000, 0, 30000, params, errors, unit="milliseconds")
+    _validate_int_param(data, 'timeout', 60000, 5000, MAX_TIMEOUT, params, errors, unit="milliseconds")
 
     fmt = data.get('format', 'png').lower()
     if fmt not in ('png', 'jpeg', 'jpg'):
@@ -325,6 +307,16 @@ def _get_github_api() -> GitHubAPI:
     return GitHubAPI()
 
 
+def _fetch_github_data(username: str) -> tuple[dict, list, list, str]:
+    """Fetch GitHub profile + repos + events and generate HTML. Used by /page and /screenshot."""
+    api = _get_github_api()
+    profile = api.get_user_profile(username)
+    repos = api.get_user_repos(username, per_page=30)
+    events = api.get_user_events(username)
+    html = generate_html(profile, repos, events)
+    return profile, repos, events, html
+
+
 @app.route('/github/<username>', methods=['GET'])
 def github_profile(username: str):
     try:
@@ -352,28 +344,22 @@ def github_repos(username: str):
 def github_page(username: str):
     """Generate HTML profile page. Also saves to archive."""
     try:
-        api = _get_github_api()
-        profile = api.get_user_profile(username)
-        repos = api.get_user_repos(username, per_page=30)
-        events = api.get_user_events(username)
-        html = generate_html(profile, repos, events)
+        profile, repos, events, html = _fetch_github_data(username)
+
+        ts = datetime.now().strftime('%Y%m%d_%H%M%S')
 
         # Save to working dir for serving
-        html_filename = f"github_{username}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
-        html_path = SCREENSHOTS_DIR / html_filename
+        html_path = SCREENSHOTS_DIR / f"github_{username}_{ts}.html"
         html_path.write_text(html)
 
         # Save JSON
-        json_path = SCREENSHOTS_DIR / html_filename.replace('.html', '.json')
+        json_path = SCREENSHOTS_DIR / f"github_{username}_{ts}.json"
         json_path.write_text(json.dumps(
             {"profile": profile, "repos": repos, "events": events}, indent=2
         ))
 
         # Archive to persistent volume
-        archive_result = _archive_files(username, {
-            "html": html_path,
-            "json": json_path,
-        })
+        _archive_files(username, {"html": html_path, "json": json_path})
 
         return Response(html, mimetype='text/html')
     except Exception as e:
@@ -394,11 +380,7 @@ def github_screenshot(username: str):
     full_page = data.get('full_page', True)
 
     try:
-        api = _get_github_api()
-        profile = api.get_user_profile(username)
-        repos = api.get_user_repos(username, per_page=30)
-        events = api.get_user_events(username)
-        html = generate_html(profile, repos, events)
+        profile, repos, events, html = _fetch_github_data(username)
 
         ts = datetime.now().strftime('%Y%m%d_%H%M%S')
 

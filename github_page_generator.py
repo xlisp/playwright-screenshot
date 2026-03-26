@@ -22,7 +22,6 @@ from pathlib import Path
 from datetime import datetime
 
 from github_api import GitHubAPI
-from vault_manager import VaultSecretManager
 
 
 def format_date(iso_str: str | None) -> str:
