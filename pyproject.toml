@@ -1,0 +1,21 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-v --tb=short --strict-markers"
+markers = [
+    "slow: marks tests that require network or browser (deselect with '-m \"not slow\"')",
+]
+
+[tool.coverage.run]
+source = ["api", "screenshot", "github_api", "github_page_generator", "vault_manager"]
+omit = ["tests/*"]
+
+[tool.coverage.report]
+show_missing = true
+fail_under = 60
+exclude_lines = [
+    "if __name__",
+    "def main",
+    "parser.add_argument",
+    "args = parser",
+]
