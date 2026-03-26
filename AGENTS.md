@@ -231,36 +231,139 @@ AFTER (split by domain):
 
 **The rule: `api.py` is a thin HTTP adapter. The thicker the business logic, the more it belongs in a separate file.**
 
-### File Responsibility Map (current state)
+### Module Taxonomy — Organize by Domain Layer
 
-Each file has exactly one job. **Do not mix these responsibilities.**
+Code in this project is classified into **5 layers**. Each layer has naming conventions, import rules, and a clear boundary. **AI agents must classify new code into the correct layer before writing it.**
 
-| File | Responsibility | Imports Flask? | Does I/O? |
-|------|---------------|----------------|-----------|
-| `api.py` | HTTP routing, request parsing, response formatting | Yes | Yes (delegates) |
-| `screenshot.py` | Browser automation engine | No | Yes (Playwright) |
-| `github_api.py` | GitHub REST API client | No | Yes (HTTP requests) |
-| `github_page_generator.py` | Data → HTML transformation | No | **No** (pure function) |
-| `vault_manager.py` | Secret retrieval across backends | No | Yes (file/network) |
+```
+┌─────────────────────────────────────────────────────────┐
+│  Layer 1: HTTP Adapter (入口层)                          │
+│  api.py — the only file that imports Flask               │
+│  Role: receive HTTP → validate → call Layer 2/3 → return │
+├─────────────────────────────────────────────────────────┤
+│  Layer 2: Service / Orchestration (业务编排层)            │
+│  *_service.py — coordinate multiple domain modules       │
+│  Role: multi-step workflows, no HTTP, no Flask           │
+├─────────────────────────────────────────────────────────┤
+│  Layer 3: Domain / Engine (领域能力层)                    │
+│  screenshot.py, vault_manager.py                         │
+│  Role: single-domain I/O capability                      │
+├─────────────────────────────────────────────────────────┤
+│  Layer 4: External API Client (外部接口层)               │
+│  *_api.py — one file per external service                │
+│  Role: HTTP calls to 3rd-party APIs, data parsing        │
+├─────────────────────────────────────────────────────────┤
+│  Layer 5: Pure Functions (纯函数层)                       │
+│  *_generator.py, *_utils.py — no I/O, no side effects   │
+│  Role: data transformation, formatting, validation logic │
+└─────────────────────────────────────────────────────────┘
+```
 
-Rules:
-- **Only `api.py` imports Flask.** If another file needs Flask, you're mixing responsibilities — refactor.
-- **Pure functions (no I/O) go in `*_generator.py` or `*_utils.py`** — these are the easiest to test and reuse.
-- **External API clients go in `*_api.py`** — one file per external service.
-- **Dependency flows one direction:** `api.py` → domain files → nothing. Domain files never import `api.py`.
-- **Test files mirror source files:** `test_api.py` ↔ `api.py`, `test_github_api.py` ↔ `github_api.py`, etc.
+**Dependency rule: layers can only import from layers below them. Never upward.**
 
-### Where to Put New Code
+```
+api.py (L1) → *_service.py (L2) → screenshot.py (L3) → (nothing)
+                                 → github_api.py (L4)
+                                 → github_page_generator.py (L5)
+```
 
-| You're adding... | Put it in... | Why |
-|-------------------|-------------|-----|
-| New API endpoint | `api.py` (thin handler) + domain `_service.py` if logic > 10 lines | Keep HTTP layer thin |
-| New external API client | New file `<service>_api.py` | One client per service |
-| New data transformation | `*_generator.py` or `*_utils.py` | Pure functions, no I/O |
-| New secret backend | `vault_manager.py` | Single source for all secrets |
-| New validation logic | `api.py` (if simple) or `validation.py` (if growing) | Validate at boundary |
-| New K8s resource | `k8s/<resource>.yaml` + update `deploy.sh` | Keep manifests together |
-| New test | `tests/test_<module>.py` | Mirror the source file |
+### Current Module Map (classified by layer)
+
+| Layer | Category | File | Responsibility |
+|-------|----------|------|----------------|
+| L1 HTTP | 入口 | `api.py` | Route handlers, request/response, validation |
+| L3 Domain | 截图引擎 | `screenshot.py` | Playwright browser automation |
+| L3 Domain | 密钥管理 | `vault_manager.py` | Secret retrieval across 4 backends |
+| L4 Client | GitHub | `github_api.py` | GitHub REST API v3 client |
+| L5 Pure | 页面生成 | `github_page_generator.py` | Profile data → HTML (pure function) |
+| — | Infra | `k8s/`, `nginx/`, `Dockerfile` | Deployment, reverse proxy |
+| — | Test | `tests/test_*.py` | Mirrors source files 1:1 |
+
+**Notice:** No L2 (service) files exist yet — `api.py` currently contains orchestration logic inline. When `api.py` approaches 300 statements, extract orchestration into `*_service.py` files.
+
+### Domain Grouping Rules
+
+**Rule 1: Group files by domain, not by technical role.**
+
+```
+BAD — grouped by type (utils/, services/, models/):
+  utils/github_helpers.py
+  utils/screenshot_helpers.py
+  services/github_service.py
+  services/screenshot_service.py
+
+GOOD — grouped by domain (flat, prefixed):
+  github_api.py              ← L4: fetches data from GitHub
+  github_page_generator.py   ← L5: turns GitHub data into HTML
+  github_service.py          ← L2: orchestrates fetch → generate → archive
+  screenshot.py              ← L3: browser engine
+  screenshot_service.py      ← L2: orchestrates URL → screenshot → save
+  vault_manager.py           ← L3: secret retrieval
+```
+
+**Rule 2: Every domain gets a consistent file family.**
+
+When a domain has files across multiple layers, they share a prefix:
+
+| Domain | L4 Client | L5 Pure | L3 Engine | L2 Service |
+|--------|-----------|---------|-----------|------------|
+| **GitHub** | `github_api.py` | `github_page_generator.py` | — | `github_service.py` (when needed) |
+| **Screenshot** | — | — | `screenshot.py` | `screenshot_service.py` (when needed) |
+| **Vault/Secrets** | — | — | `vault_manager.py` | — |
+
+To add a new domain (e.g., "Slack notifications"):
+1. `slack_api.py` (L4) — HTTP client for Slack API
+2. `slack_formatter.py` (L5) — build message payloads (pure)
+3. `slack_service.py` (L2) — if orchestration across multiple calls is needed
+4. Add thin route handlers in `api.py` (L1) — or a Flask Blueprint if 5+ endpoints
+
+**Rule 3: New domain = new prefix, never stuff into existing files.**
+
+| You want to add... | Wrong | Right |
+|---------------------|-------|-------|
+| GitLab integration | Add methods to `github_api.py` | New file `gitlab_api.py` |
+| PDF export | Add to `github_page_generator.py` | New file `pdf_generator.py` |
+| S3 storage backend | Add to `vault_manager.py` | New file `s3_storage.py` |
+| User authentication | Add to `api.py` | New file `auth_service.py` + thin handlers in `api.py` |
+| Shared string helpers | Add to whichever file needs it | New file `text_utils.py` (L5) if used by 3+ files |
+
+**Rule 4: Flat directory — no subdirectories for Python source until 15+ modules.**
+
+Current: all `.py` files at project root. This is correct.
+
+When to introduce `src/` or package directories:
+- The project reaches **15+ Python source files** (excluding tests)
+- At that point, group into packages by domain: `github/`, `screenshot/`, `vault/`
+- Each package gets an `__init__.py` that exports the public API
+- Until then: **flat is better than nested**
+
+### Where to Put New Code (decision tree)
+
+```
+Is it an HTTP route handler?
+  YES → api.py (L1), keep it ≤ 20 lines
+  NO ↓
+
+Does it call external HTTP APIs (GitHub, Slack, etc.)?
+  YES → <service>_api.py (L4), one file per external service
+  NO ↓
+
+Does it do I/O (browser, filesystem, network, Vault)?
+  YES → <domain>.py or <domain>_manager.py (L3)
+  NO ↓
+
+Does it coordinate multiple domain modules?
+  YES → <domain>_service.py (L2)
+  NO ↓
+
+Is it a pure data transformation (format, generate, validate)?
+  YES → <domain>_generator.py or <domain>_utils.py (L5)
+```
+
+**After placing the file, always:**
+1. Create `tests/test_<new_file>.py` mirroring the source
+2. Import it from the correct layer (never import upward)
+3. Update the "Current Module Map" table above
 
 ### Anti-Patterns to Reject
 
