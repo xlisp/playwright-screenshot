@@ -53,8 +53,8 @@ spec:
               memory: "512Mi"
               cpu: "250m"
             limits:
-              memory: "2Gi"
-              cpu: "1000m"
+              memory: "3Gi"
+              cpu: "1500m"
           envFrom:
             - configMapRef:
                 name: playwright-screenshot-config
@@ -74,6 +74,11 @@ spec:
               value: "http://vault.vault.svc.cluster.local:8200"
             - name: VAULT_K8S_ROLE
               value: "playwright-screenshot"
+            # ── Screenshot kill timeout (seconds) ──
+            # Chrome is killed if a single screenshot exceeds this.
+            # Run `python benchmark.py` inside the pod to find the right value.
+            - name: SCREENSHOT_KILL_TIMEOUT
+              value: "3"
           volumeMounts:
             # Ephemeral screenshots (cleared on pod restart — that's fine)
             - name: screenshots-tmp
