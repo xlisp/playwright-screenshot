@@ -1,0 +1,199 @@
+{
+  "timestamp": "2026-04-02T02:09:59.775313",
+  "config": {
+    "chrome_path": "/opt/chrome/chrome-linux64/chrome",
+    "kill_timeout": 8.0,
+    "heights": [
+      1000,
+      3000,
+      5000,
+      8000,
+      10000,
+      15000,
+      20000,
+      30000,
+      50000
+    ],
+    "repeat": 3,
+    "concurrency_levels": [
+      1,
+      2,
+      3,
+      4,
+      6
+    ],
+    "concurrent_height": 5000
+  },
+  "single_results": [
+    {
+      "height_px": 1000,
+      "html_size_kb": 5.42,
+      "runs": 3,
+      "killed_count": 0,
+      "avg_time_s": 1.0525,
+      "min_time_s": 0.9457,
+      "max_time_s": 1.174,
+      "median_time_s": 1.0378,
+      "stdev_time_s": 0.1149,
+      "avg_size_kb": 368.76
+    },
+    {
+      "height_px": 3000,
+      "html_size_kb": 13.9,
+      "runs": 3,
+      "killed_count": 0,
+      "avg_time_s": 1.6873,
+      "min_time_s": 1.4333,
+      "max_time_s": 2.137,
+      "median_time_s": 1.4916,
+      "stdev_time_s": 0.3905,
+      "avg_size_kb": 913.67
+    },
+    {
+      "height_px": 5000,
+      "html_size_kb": 22.41,
+      "runs": 3,
+      "killed_count": 0,
+      "avg_time_s": 2.1612,
+      "min_time_s": 1.9669,
+      "max_time_s": 2.3029,
+      "median_time_s": 2.2138,
+      "stdev_time_s": 0.1741,
+      "avg_size_kb": 1473.02
+    },
+    {
+      "height_px": 8000,
+      "html_size_kb": 35.17,
+      "runs": 3,
+      "killed_count": 0,
+      "avg_time_s": 2.9967,
+      "min_time_s": 2.8357,
+      "max_time_s": 3.2979,
+      "median_time_s": 2.8565,
+      "stdev_time_s": 0.2611,
+      "avg_size_kb": 2313.49
+    },
+    {
+      "height_px": 10000,
+      "html_size_kb": 43.7,
+      "runs": 3,
+      "killed_count": 0,
+      "avg_time_s": 3.5785,
+      "min_time_s": 3.4119,
+      "max_time_s": 3.6991,
+      "median_time_s": 3.6246,
+      "stdev_time_s": 0.149,
+      "avg_size_kb": 2882.52
+    },
+    {
+      "height_px": 15000,
+      "html_size_kb": 64.99,
+      "runs": 3,
+      "killed_count": 0,
+      "avg_time_s": 4.778,
+      "min_time_s": 4.7227,
+      "max_time_s": 4.8153,
+      "median_time_s": 4.7961,
+      "stdev_time_s": 0.0489,
+      "avg_size_kb": 4276.88
+    },
+    {
+      "height_px": 20000,
+      "html_size_kb": 86.38,
+      "runs": 3,
+      "killed_count": 0,
+      "avg_time_s": 6.6415,
+      "min_time_s": 6.2511,
+      "max_time_s": 7.3729,
+      "median_time_s": 6.3006,
+      "stdev_time_s": 0.6339,
+      "avg_size_kb": 5719.64
+    },
+    {
+      "height_px": 30000,
+      "html_size_kb": 129.27,
+      "runs": 3,
+      "killed_count": 3,
+      "avg_time_s": null,
+      "min_time_s": null,
+      "max_time_s": null,
+      "median_time_s": null,
+      "stdev_time_s": null,
+      "avg_size_kb": null
+    },
+    {
+      "height_px": 50000,
+      "html_size_kb": 215.12,
+      "runs": 3,
+      "killed_count": 3,
+      "avg_time_s": null,
+      "min_time_s": null,
+      "max_time_s": null,
+      "median_time_s": null,
+      "stdev_time_s": null,
+      "avg_size_kb": null
+    }
+  ],
+  "concurrent_results": [
+    {
+      "concurrency": 1,
+      "page_height_px": 5000,
+      "batch_elapsed_s": 3.7773,
+      "success_count": 1,
+      "killed_count": 0,
+      "failed_count": 0,
+      "avg_time_s": 1.9044,
+      "min_time_s": 1.9044,
+      "max_time_s": 1.9044,
+      "throughput_per_s": 0.26
+    },
+    {
+      "concurrency": 2,
+      "page_height_px": 5000,
+      "batch_elapsed_s": 6.8548,
+      "success_count": 2,
+      "killed_count": 0,
+      "failed_count": 0,
+      "avg_time_s": 3.0886,
+      "min_time_s": 3.0192,
+      "max_time_s": 3.1579,
+      "throughput_per_s": 0.29
+    },
+    {
+      "concurrency": 3,
+      "page_height_px": 5000,
+      "batch_elapsed_s": 10.7654,
+      "success_count": 3,
+      "killed_count": 0,
+      "failed_count": 0,
+      "avg_time_s": 4.9382,
+      "min_time_s": 4.896,
+      "max_time_s": 5.0043,
+      "throughput_per_s": 0.28
+    },
+    {
+      "concurrency": 4,
+      "page_height_px": 5000,
+      "batch_elapsed_s": 17.5008,
+      "success_count": 4,
+      "killed_count": 0,
+      "failed_count": 0,
+      "avg_time_s": 7.5018,
+      "min_time_s": 7.3161,
+      "max_time_s": 7.607,
+      "throughput_per_s": 0.23
+    },
+    {
+      "concurrency": 6,
+      "page_height_px": 5000,
+      "batch_elapsed_s": 28.0002,
+      "success_count": 0,
+      "killed_count": 6,
+      "failed_count": 0,
+      "avg_time_s": null,
+      "min_time_s": null,
+      "max_time_s": null,
+      "throughput_per_s": 0
+    }
+  ]
+}

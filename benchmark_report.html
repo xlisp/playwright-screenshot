@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Playwright Screenshot Performance Report</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+            background: #0f0f1a; color: #e0e0e0; }
+    .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+    h1 { font-size: 28px; margin-bottom: 8px; }
+    h2 { font-size: 20px; margin: 30px 0 15px; color: #8b9cf7; }
+    h3 { font-size: 16px; margin: 20px 0 10px; color: #a8d8ea; }
+    .header { background: linear-gradient(135deg, #1a1a3e, #2d1b69);
+               border-radius: 16px; padding: 30px; margin-bottom: 25px;
+               border: 1px solid #333; }
+    .header .subtitle { color: #888; font-size: 14px; margin-top: 5px; }
+    .config-badge { display: inline-block; background: #2a2a4a; padding: 4px 12px;
+                     border-radius: 20px; font-size: 12px; margin: 3px 4px 3px 0;
+                     border: 1px solid #444; }
+    .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+                gap: 15px; margin: 20px 0; }
+    .metric { background: #1a1a2e; border: 1px solid #333; border-radius: 12px;
+               padding: 20px; text-align: center; }
+    .metric .value { font-size: 36px; font-weight: 700; }
+    .metric .label { font-size: 13px; color: #888; margin-top: 5px; }
+    .metric.green .value { color: #4ade80; }
+    .metric.blue .value { color: #60a5fa; }
+    .metric.yellow .value { color: #fbbf24; }
+    .metric.red .value { color: #f87171; }
+    .metric.purple .value { color: #a78bfa; }
+    .card { background: #1a1a2e; border: 1px solid #333; border-radius: 12px;
+             padding: 20px; margin-bottom: 20px; }
+    .chart-container { position: relative; height: 350px; margin: 15px 0; }
+    table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 14px; }
+    th { background: #2a2a4a; padding: 10px 12px; text-align: left;
+          font-weight: 600; border-bottom: 2px solid #444; }
+    td { padding: 8px 12px; border-bottom: 1px solid #2a2a3a; }
+    tr:hover td { background: #1e1e38; }
+    .tag { display: inline-block; padding: 2px 8px; border-radius: 10px;
+            font-size: 11px; font-weight: 600; }
+    .tag-ok { background: #064e3b; color: #4ade80; }
+    .tag-killed { background: #7f1d1d; color: #fca5a5; }
+    .tag-fail { background: #78350f; color: #fcd34d; }
+    .recommendation { background: linear-gradient(135deg, #1e3a5f, #1a2744);
+                        border: 1px solid #3b82f6; border-radius: 12px;
+                        padding: 25px; margin: 25px 0; }
+    .recommendation h2 { color: #60a5fa; margin-top: 0; }
+    .rec-item { margin: 12px 0; padding: 10px 15px; background: #0f1729;
+                 border-radius: 8px; border-left: 3px solid #3b82f6; }
+    .rec-item strong { color: #93c5fd; }
+    .footer { text-align: center; color: #555; font-size: 12px;
+               margin-top: 30px; padding: 20px; }
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    @media (max-width: 768px) { .two-col { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="container">
+
+<div class="header">
+    <h1>Playwright Screenshot Performance Report</h1>
+    <div class="subtitle">2026-04-02 02:09:59</div>
+    <div style="margin-top: 12px;">
+        <span class="config-badge">CPU: 1500m</span>
+        <span class="config-badge">Memory: 3G</span>
+        <span class="config-badge">Kill Timeout: 8.0s</span>
+        <span class="config-badge">Repeat: 3x</span>
+    </div>
+</div>
+
+<!-- Key Metrics -->
+<div class="metrics">
+    <div class="metric green">
+        <div class="value">0.95s</div>
+        <div class="label">Fastest Screenshot (1,000px page)</div>
+    </div>
+    <div class="metric blue">
+        <div class="value">20,000px</div>
+        <div class="label">Max Safe Page Height</div>
+    </div>
+    <div class="metric yellow">
+        <div class="value">9.6s</div>
+        <div class="label">Suggested Kill Timeout</div>
+    </div>
+    <div class="metric purple">
+        <div class="value">0.29/s</div>
+        <div class="label">Peak Throughput (N=2)</div>
+    </div>
+</div>
+
+<!-- Single Screenshot Section -->
+<h2>1. Single Screenshot: Time vs Page Height</h2>
+
+<div class="card">
+    <div class="chart-container">
+        <canvas id="heightTimeChart"></canvas>
+    </div>
+</div>
+
+<div class="two-col">
+    <div class="card">
+        <h3>Time vs Height</h3>
+        <div class="chart-container" style="height: 280px;">
+            <canvas id="heightBarChart"></canvas>
+        </div>
+    </div>
+    <div class="card">
+        <h3>Screenshot File Size</h3>
+        <div class="chart-container" style="height: 280px;">
+            <canvas id="sizeChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <h3>Detailed Results</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>Page Height</th>
+                <th>Avg Time</th>
+                <th>Min</th>
+                <th>Max</th>
+                <th>Median</th>
+                <th>Stdev</th>
+                <th>File Size</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>1,000px</td>
+                <td><strong>1.052s</strong></td>
+                <td>0.946s</td>
+                <td>1.174s</td>
+                <td>1.038s</td>
+                <td>0.115</td>
+                <td>369 KB</td>
+                <td><span class="tag tag-ok">OK</span></td>
+            </tr>
+            <tr>
+                <td>3,000px</td>
+                <td><strong>1.687s</strong></td>
+                <td>1.433s</td>
+                <td>2.137s</td>
+                <td>1.492s</td>
+                <td>0.391</td>
+                <td>914 KB</td>
+                <td><span class="tag tag-ok">OK</span></td>
+            </tr>
+            <tr>
+                <td>5,000px</td>
+                <td><strong>2.161s</strong></td>
+                <td>1.967s</td>
+                <td>2.303s</td>
+                <td>2.214s</td>
+                <td>0.174</td>
+                <td>1473 KB</td>
+                <td><span class="tag tag-ok">OK</span></td>
+            </tr>
+            <tr>
+                <td>8,000px</td>
+                <td><strong>2.997s</strong></td>
+                <td>2.836s</td>
+                <td>3.298s</td>
+                <td>2.857s</td>
+                <td>0.261</td>
+                <td>2313 KB</td>
+                <td><span class="tag tag-ok">OK</span></td>
+            </tr>
+            <tr>
+                <td>10,000px</td>
+                <td><strong>3.579s</strong></td>
+                <td>3.412s</td>
+                <td>3.699s</td>
+                <td>3.625s</td>
+                <td>0.149</td>
+                <td>2883 KB</td>
+                <td><span class="tag tag-ok">OK</span></td>
+            </tr>
+            <tr>
+                <td>15,000px</td>
+                <td><strong>4.778s</strong></td>
+                <td>4.723s</td>
+                <td>4.815s</td>
+                <td>4.796s</td>
+                <td>0.049</td>
+                <td>4277 KB</td>
+                <td><span class="tag tag-ok">OK</span></td>
+            </tr>
+            <tr>
+                <td>20,000px</td>
+                <td><strong>6.641s</strong></td>
+                <td>6.251s</td>
+                <td>7.373s</td>
+                <td>6.301s</td>
+                <td>0.634</td>
+                <td>5720 KB</td>
+                <td><span class="tag tag-ok">OK</span></td>
+            </tr>
+            <tr>
+                <td>30,000px</td>
+                <td><strong>N/A</strong></td>
+                <td>N/A</td>
+                <td>N/A</td>
+                <td>N/A</td>
+                <td>N/A</td>
+                <td>N/A</td>
+                <td><span class="tag tag-killed">ALL KILLED</span></td>
+            </tr>
+            <tr>
+                <td>50,000px</td>
+                <td><strong>N/A</strong></td>
+                <td>N/A</td>
+                <td>N/A</td>
+                <td>N/A</td>
+                <td>N/A</td>
+                <td>N/A</td>
+                <td><span class="tag tag-killed">ALL KILLED</span></td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+
+<!-- Concurrent Section -->
+<h2>2. Concurrent Stress Test</h2>
+
+<div class="two-col">
+    <div class="card">
+        <h3>Throughput vs Concurrency</h3>
+        <div class="chart-container" style="height: 280px;">
+            <canvas id="throughputChart"></canvas>
+        </div>
+    </div>
+    <div class="card">
+        <h3>Avg Time vs Concurrency</h3>
+        <div class="chart-container" style="height: 280px;">
+            <canvas id="concTimeChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <h3>Detailed Results</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>Concurrency</th>
+                <th>Batch Time</th>
+                <th>Avg Time</th>
+                <th>Max Time</th>
+                <th>Throughput</th>
+                <th>OK</th>
+                <th>Killed</th>
+                <th>Failed</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><strong>1</strong></td>
+                <td>3.777s</td>
+                <td>1.904s</td>
+                <td>1.904s</td>
+                <td>0.26/s</td>
+                <td><span class="tag tag-ok">1</span></td>
+                <td>0</td>
+                <td>0</td>
+            </tr>
+            <tr>
+                <td><strong>2</strong></td>
+                <td>6.855s</td>
+                <td>3.089s</td>
+                <td>3.158s</td>
+                <td>0.29/s</td>
+                <td><span class="tag tag-ok">2</span></td>
+                <td>0</td>
+                <td>0</td>
+            </tr>
+            <tr>
+                <td><strong>3</strong></td>
+                <td>10.765s</td>
+                <td>4.938s</td>
+                <td>5.004s</td>
+                <td>0.28/s</td>
+                <td><span class="tag tag-ok">3</span></td>
+                <td>0</td>
+                <td>0</td>
+            </tr>
+            <tr>
+                <td><strong>4</strong></td>
+                <td>17.501s</td>
+                <td>7.502s</td>
+                <td>7.607s</td>
+                <td>0.23/s</td>
+                <td><span class="tag tag-ok">4</span></td>
+                <td>0</td>
+                <td>0</td>
+            </tr>
+            <tr>
+                <td><strong>6</strong></td>
+                <td>28.000s</td>
+                <td>N/A</td>
+                <td>N/A</td>
+                <td>0</td>
+                <td><span class="tag tag-ok">0</span></td>
+                <td><span class='tag tag-killed'>6</span></td>
+                <td>0</td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+
+<div class="recommendation">
+    <h2>Recommendations (CPU=1500m, Memory=3G)</h2>
+
+    <div class="rec-item">
+        <strong>Suggested SCREENSHOT_KILL_TIMEOUT:</strong> 9.6s<br>
+        Based on max observed time 7.37s + 30% safety margin.
+        Pages exceeding this threshold should have Chrome killed.
+    </div>
+
+    <div class="rec-item">
+        <strong>Max Safe Page Height:</strong> ~20,000px<br>
+        Pages taller than this will likely exceed the timeout.
+        Average time at this height: 6.64s.
+    </div>
+
+    <div class="rec-item">
+        <strong>Fastest Screenshot:</strong> 0.95s (1,000px page)<br>
+        This is the baseline — overhead from Chrome launch + render of a small page.
+    </div>
+
+    <div class="rec-item">
+        <strong>Optimal Concurrency:</strong> 2 workers<br>
+        Throughput: 0.29/s, Avg: 3.09s.
+        Beyond this, resource contention increases latency.
+    </div>
+
+    <div class="rec-item">
+        <strong>Performance Formula (approx):</strong><br>
+        time(s) &asymp; 0.9 + height(px) &times; 0.2998/1000px
+    </div>
+</div>
+
+<div class="footer">
+    Generated by benchmark.py | 2026-04-02 02:09:59 | Pod: CPU=1500m Memory=3G
+</div>
+
+</div>
+
+<script>
+const chartColors = {
+    blue: '#60a5fa', green: '#4ade80', yellow: '#fbbf24',
+    red: '#f87171', purple: '#a78bfa', cyan: '#22d3ee',
+};
+const gridColor = 'rgba(255,255,255,0.08)';
+
+// 1. Height vs Time (line chart)
+new Chart(document.getElementById('heightTimeChart'), {
+    type: 'line',
+    data: {
+        labels: ["1K", "3K", "5K", "8K", "10K", "15K", "20K", "30K", "50K"],
+        datasets: [
+            { label: 'Avg Time (s)', data: [1.0525, 1.6873, 2.1612, 2.9967, 3.5785, 4.778, 6.6415, 0, 0],
+               borderColor: chartColors.blue, backgroundColor: 'rgba(96,165,250,0.1)',
+               fill: true, tension: 0.3, pointRadius: 5 },
+            { label: 'Min Time (s)', data: [0.9457, 1.4333, 1.9669, 2.8357, 3.4119, 4.7227, 6.2511, 0, 0],
+               borderColor: chartColors.green, borderDash: [5,5], tension: 0.3, pointRadius: 3 },
+            { label: 'Max Time (s)', data: [1.174, 2.137, 2.3029, 3.2979, 3.6991, 4.8153, 7.3729, 0, 0],
+               borderColor: chartColors.red, borderDash: [5,5], tension: 0.3, pointRadius: 3 },
+            { label: "Kill Timeout (8.0s)", data: [8.0, 8.0, 8.0, 8.0, 8.0, 8.0, 8.0, 8.0, 8.0], borderColor: chartColors.yellow, borderDash: [10,5], pointRadius: 0, borderWidth: 2 },
+        ]
+    },
+    options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { title: { display: true, text: 'Screenshot Time vs Page Height', color: '#eee' },
+                    legend: { labels: { color: '#ccc' } } },
+        scales: {
+            x: { title: { display: true, text: 'Page Height', color: '#888' },
+                  ticks: { color: '#888' }, grid: { color: gridColor } },
+            y: { title: { display: true, text: 'Time (seconds)', color: '#888' },
+                  ticks: { color: '#888' }, grid: { color: gridColor },
+                  beginAtZero: true }
+        }
+    }
+});
+
+// 2. Height bar chart
+new Chart(document.getElementById('heightBarChart'), {
+    type: 'bar',
+    data: {
+        labels: ["1K", "3K", "5K", "8K", "10K", "15K", "20K", "30K", "50K"],
+        datasets: [{ label: 'Avg Time (s)', data: [1.0525, 1.6873, 2.1612, 2.9967, 3.5785, 4.778, 6.6415, 0, 0],
+                      backgroundColor: ["rgba(74,222,128,0.7)", "rgba(74,222,128,0.7)", "rgba(74,222,128,0.7)", "rgba(74,222,128,0.7)", "rgba(74,222,128,0.7)", "rgba(74,222,128,0.7)", "rgba(74,222,128,0.7)", "rgba(248,113,113,0.7)", "rgba(248,113,113,0.7)"] }]
+    },
+    options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+            x: { ticks: { color: '#888' }, grid: { color: gridColor } },
+            y: { ticks: { color: '#888' }, grid: { color: gridColor }, beginAtZero: true }
+        }
+    }
+});
+
+// 3. File size chart
+new Chart(document.getElementById('sizeChart'), {
+    type: 'bar',
+    data: {
+        labels: ["1K", "3K", "5K", "8K", "10K", "15K", "20K", "30K", "50K"],
+        datasets: [{ label: 'Screenshot Size (KB)', data: [368.76, 913.67, 1473.02, 2313.49, 2882.52, 4276.88, 5719.64, 0, 0],
+                      backgroundColor: 'rgba(167,139,250,0.6)' }]
+    },
+    options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+            x: { ticks: { color: '#888' }, grid: { color: gridColor } },
+            y: { ticks: { color: '#888' }, grid: { color: gridColor }, beginAtZero: true }
+        }
+    }
+});
+
+// 4. Throughput chart
+new Chart(document.getElementById('throughputChart'), {
+    type: 'bar',
+    data: {
+        labels: ["1", "2", "3", "4", "6"],
+        datasets: [{ label: 'Throughput (screenshots/s)', data: [0.26, 0.29, 0.28, 0.23, 0],
+                      backgroundColor: 'rgba(34,211,238,0.6)' }]
+    },
+    options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+            x: { title: { display: true, text: 'Concurrency', color: '#888' },
+                  ticks: { color: '#888' }, grid: { color: gridColor } },
+            y: { ticks: { color: '#888' }, grid: { color: gridColor }, beginAtZero: true }
+        }
+    }
+});
+
+// 5. Concurrent time chart
+new Chart(document.getElementById('concTimeChart'), {
+    type: 'line',
+    data: {
+        labels: ["1", "2", "3", "4", "6"],
+        datasets: [
+            { label: 'Avg Time (s)', data: [1.9044, 3.0886, 4.9382, 7.5018, 0],
+               borderColor: chartColors.blue, tension: 0.3, pointRadius: 5 },
+            { label: 'Max Time (s)', data: [1.9044, 3.1579, 5.0043, 7.607, 0],
+               borderColor: chartColors.red, borderDash: [5,5], tension: 0.3, pointRadius: 3 },
+        ]
+    },
+    options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { labels: { color: '#ccc' } } },
+        scales: {
+            x: { title: { display: true, text: 'Concurrency', color: '#888' },
+                  ticks: { color: '#888' }, grid: { color: gridColor } },
+            y: { ticks: { color: '#888' }, grid: { color: gridColor }, beginAtZero: true }
+        }
+    }
+});
+
+</script>
+</body></html>
