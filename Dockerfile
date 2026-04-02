@@ -32,7 +32,7 @@ RUN mkdir -p /opt/chrome \
 ENV CHROME_PATH=/opt/chrome/chrome-linux64/chrome
 
 # Copy application code
-COPY screenshot.py api.py github_api.py github_page_generator.py vault_manager.py ./
+COPY screenshot.py api.py github_api.py github_page_generator.py vault_manager.py benchmark.py ./
 COPY entrypoint.sh .
 RUN chmod +x entrypoint.sh
 
